@@ -19,7 +19,7 @@ python -m pip install -r backend\requirements.txt
 Copy-Item backend\.env.example backend\.env
 ```
 
-Edit `backend\.env` and set a private `DJANGO_SECRET_KEY` and your PostgreSQL password. Development uses Django's console email backend, and private uploads (when added) will be stored under `backend\private_media`; that directory is not served directly.
+Edit `backend\.env` and set a private `DJANGO_SECRET_KEY` and your PostgreSQL password. The example sets `DJANGO_SESSION_COOKIE_SECURE=False` for local HTTP development. Keep it `True` in production. Development uses Django's console email backend, and private uploads (when added) will be stored under `backend\private_media`; that directory is not served directly.
 
 Create the PostgreSQL database and user if needed:
 
@@ -55,7 +55,7 @@ Start the development server and open the Django admin at the configured `DJANGO
 python manage.py runserver
 ```
 
-Session cookies are Secure as required by the authentication design. Django's built-in `runserver` serves plain HTTP, so use an HTTPS local proxy when you need to complete an admin login in a browser. The `createsuperuser` command works without browser access.
+The local example disables the Secure cookie flag so browser sessions work over `runserver`'s plain HTTP. Production must set `DJANGO_SESSION_COOKIE_SECURE=True`; the setting also defaults to `True` when unset.
 
 ## API documentation
 
