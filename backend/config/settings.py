@@ -110,8 +110,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-# Keep session cookies Secure and host-only in every environment.
-SESSION_COOKIE_SECURE = True
+# Keep session cookies host-only in every environment. Local development may
+# disable Secure for plain HTTP; production must keep this enabled.
+SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=True)
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_TRUSTED_ORIGINS = env.list(

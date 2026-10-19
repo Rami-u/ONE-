@@ -56,7 +56,7 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 
 | Stage | Content | Status | Branch | Reviewer |
 |---|---|---|---|---|
-| 1 | Bootstrap, workspaces, accounts | done - awaiting review | stage-1-foundation | - |
+| 1 | Bootstrap, workspaces, accounts | done - awaiting review | stage-1-fixes | - |
 | 2 | Teacher onboarding, staff login | not started | - | - |
 | 3 | Public showcase, workspace settings | not started | - | - |
 | 4 | Student registration, login, approval | not started | - | - |
@@ -69,8 +69,8 @@ Fill this in as apps are created. One row per app, kept to one line each.
 
 | App | Responsibility | Key models | Endpoints (prefix `/api/v1/`) | Stage |
 |---|---|---|---|---|
-| workspaces | Tenant configuration and identity; `Workspace` | None (Stage 1) | 1 |
-| accounts | Custom authentication identity; `User` | None (Stage 1) | 1 |
+| workspaces | Tenant configuration and identity | `Workspace` | None (Stage 1) | 1 |
+| accounts | Custom authentication identity | `User` | None (Stage 1) | 1 |
 
 ## 7. Reusable building blocks
 
@@ -102,8 +102,12 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 
 ## 10. How to run
 
-From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`; `python manage.py test`. Checks: `python manage.py check` and `python manage.py makemigrations --check --dry-run`.
+From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`.
+
+Stage 1 fixes verification, from `backend` with the local database override: `$env:POSTGRES_DB = 'edu'`; `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py test`.
 
 ## 11. Known problems
 
-- Django's required Secure session cookie prevents browser session login over plain HTTP `runserver`; use an HTTPS local proxy for authenticated admin use.
+- Local development sets `DJANGO_SESSION_COOKIE_SECURE=False` in `backend/.env.example` for HTTP `runserver`; production must keep it `True`. If unset, the setting defaults to `True`.
+- This workspace's PowerShell process can override `POSTGRES_DB` to `postgres`; set it to the application database before Django commands. Verification here used `edu`.
+- Existing root `.archify/` and `project/` directories are untracked now that their `.gitignore` entries were removed; they were left untouched.
