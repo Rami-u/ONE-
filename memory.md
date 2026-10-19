@@ -56,8 +56,8 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 
 | Stage | Content | Status | Branch | Reviewer |
 |---|---|---|---|---|
-| 1 | Bootstrap, workspaces, accounts | done - awaiting review | stage-1-fixes | - |
-| 2 | Teacher onboarding, staff login | not started | - | - |
+| 1 | Bootstrap, workspaces, accounts | merged | stage-1-fixes | - |
+| 2 | Teacher onboarding, staff login | done - awaiting review | stage-2-teacher-onboarding | - |
 | 3 | Public showcase, workspace settings | not started | - | - |
 | 4 | Student registration, login, approval | not started | - | - |
 | 5 | Courses, enrollment, manual payments | not started | - | - |
@@ -69,8 +69,8 @@ Fill this in as apps are created. One row per app, kept to one line each.
 
 | App | Responsibility | Key models | Endpoints (prefix `/api/v1/`) | Stage |
 |---|---|---|---|---|
-| workspaces | Tenant configuration and identity | `Workspace` | None (Stage 1) | 1 |
-| accounts | Custom authentication identity | `User` | None (Stage 1) | 1 |
+| workspaces | Tenant configuration and identity; admin workspace lifecycle | `Workspace` | Admin workspace list/detail/suspend/activate (`admin/workspaces/`) | 2 |
+| accounts | Custom identity, teacher onboarding, and staff auth | `User` | Admin teacher management (`admin/teachers/`); staff auth (`workspaces/{slug}/staff/auth/`) | 2 |
 
 ## 7. Reusable building blocks
 
@@ -81,6 +81,9 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Workspace slug validator | `backend/apps/workspaces/validators.py` | Enforce normalized slug syntax and reserved names |
 | Workspace slug immutability | `backend/apps/workspaces/models.py` | Reject slug changes after creation |
 | User manager and login key derivation | `backend/apps/accounts/managers.py`, `backend/apps/accounts/models.py` | Create workspace accounts and Platform Admins; derive normalized login keys |
+| Teacher/workspace onboarding transaction and invitation mail | `backend/apps/accounts/services.py` | Atomically create teacher/workspace; send invitation after commit; resend/reset password links |
+| Platform Admin and active workspace checks | `backend/apps/accounts/permissions.py` | Protect platform admin routes and reject staff auth for missing/suspended workspaces |
+| Staff password token and API routes | `backend/apps/accounts/tokens.py`, `backend/apps/accounts/urls.py`, `backend/apps/accounts/views.py` | Expiring, single-use password tokens; teacher login and password setup/reset |
 
 ## 8. Decisions the design did not cover
 
@@ -90,6 +93,9 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Workspace logos are stored as nullable URL references, matching the design's “image URL/reference” without introducing uploads in Stage 1.
 - New accounts default to pending approval; the user manager marks teacher, assistant, and Platform Admin accounts approved on creation.
 - Exact dependencies are pinned to Django 6.0.8, DRF 3.17.2, drf-spectacular 0.30.0, psycopg 3.3.6, and django-environ 0.14.0 for the Python 3.14.4 environment and documented framework compatibility.
+- Password reset completion uses the staff set-password endpoint with the same `uid`, token, and new password shape; the design specifies no separate finish-reset route (Stage 2).
+- Invitation and reset hosts are built from `PLATFORM_URL_SCHEME` and `PLATFORM_BASE_DOMAIN` (defaults `https` and `edunova.com`) so the design's example domain is configurable (Stage 2).
+- Invitation links target the workspace's `/teacher/set-password/` frontend route and carry `uid` and token as query parameters; the frontend submits them to the API (Stage 2).
 
 ## 9. Deferred to later rounds
 
@@ -106,8 +112,11 @@ From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scrip
 
 Stage 1 fixes verification, from `backend` with the local database override: `$env:POSTGRES_DB = 'edu'`; `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py test`.
 
+Stage 2 verification, from `backend` with `$env:POSTGRES_DB = 'edu'`: `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py spectacular --validate --file ..\stage2-openapi.yaml`; `& '..\.venv\Scripts\python.exe' manage.py test`.
+
 ## 11. Known problems
 
 - Local development sets `DJANGO_SESSION_COOKIE_SECURE=False` in `backend/.env.example` for HTTP `runserver`; production must keep it `True`. If unset, the setting defaults to `True`.
 - This workspace's PowerShell process can override `POSTGRES_DB` to `postgres`; set it to the application database before Django commands. Verification here used `edu`.
+- The `/teacher/set-password/` invitation/reset destination is a frontend route; this backend stage supplies the API but does not build the frontend page.
 - Existing root `.archify/` and `project/` directories are untracked now that their `.gitignore` entries were removed; they were left untouched.

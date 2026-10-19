@@ -18,6 +18,8 @@ ALLOWED_HOSTS = env.list(
 )
 DJANGO_ADMIN_PATH = env("DJANGO_ADMIN_PATH", default="platform-admin/").strip("/") + "/"
 ENABLE_API_DOCS = env.bool("DJANGO_ENABLE_API_DOCS", default=DEBUG)
+PLATFORM_BASE_DOMAIN = env("PLATFORM_BASE_DOMAIN", default="edunova.com")
+PLATFORM_URL_SCHEME = env("PLATFORM_URL_SCHEME", default="https")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -90,6 +92,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_RATES": {
+        "staff_login": "5/minute",
+        "staff_password_reset": "3/hour",
+    },
 }
 SPECTACULAR_SETTINGS = {
     "TITLE": "Educational Platform API",

@@ -1,6 +1,6 @@
 # Educational Platform Backend
 
-The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 1 provides the project foundation, workspaces, accounts, Django admin, and optional API documentation. No product API endpoints are included yet.
+The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 2 adds Platform Admin teacher/workspace management and teacher invitation, login, and password setup/reset APIs.
 
 ## Requirements
 
@@ -28,6 +28,7 @@ psql -U postgres -c "CREATE DATABASE educational_platform;"
 ```
 
 Set `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, and `POSTGRES_PORT` in `backend\.env` to match your local PostgreSQL setup.
+Set `PLATFORM_BASE_DOMAIN` to the domain used for workspace subdomains (default `edunova.com`) and `PLATFORM_URL_SCHEME` to `https` in production. Invitation links use `{slug}.{PLATFORM_BASE_DOMAIN}`.
 
 ## Migrations, checks, and tests
 
@@ -60,6 +61,22 @@ The local example disables the Secure cookie flag so browser sessions work over 
 ## API documentation
 
 Set `DJANGO_ENABLE_API_DOCS=True` to enable `GET /api/schema/` and `GET /api/docs/`. The example environment enables them for development. Set it to `False` to make both paths return 404.
+
+## Stage 2 teacher onboarding and authentication
+
+All Platform Admin API routes require an authenticated account with the `admin` role:
+
+- `POST` and `GET /api/v1/admin/teachers/` create and list teachers.
+- `GET /api/v1/admin/teachers/{id}/` views a teacher; `POST /api/v1/admin/teachers/{id}/resend-invite/` sends another password invitation.
+- `GET /api/v1/admin/workspaces/` and `GET /api/v1/admin/workspaces/{id}/` list and view workspaces. `POST` to `{id}/suspend/` or `{id}/activate/` changes workspace status.
+
+The staff authentication routes are workspace scoped:
+
+- `POST /api/v1/workspaces/{slug}/staff/auth/login/` accepts `login_key` and `password` for an active teacher account.
+- `POST /api/v1/workspaces/{slug}/staff/auth/set-password/` accepts `uid`, `token`, and `new_password` from an invitation or reset link. The link opens the future frontend route `/teacher/set-password/`; that page must submit the values to this API.
+- `POST /api/v1/workspaces/{slug}/staff/auth/password-reset/` accepts the teacher's `email` and sends a reset link when the account exists.
+
+Invitation and reset links expire according to Django's `PASSWORD_RESET_TIMEOUT`. The set-password route also completes password resets because the design defines no separate reset-finish endpoint. Emails use Django's console backend in development. If invitation delivery fails after teacher creation, the account remains available and an admin can resend the invite.
 
 ## Stage 1 models and rules
 
