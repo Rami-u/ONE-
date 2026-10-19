@@ -95,6 +95,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "staff_login": "5/minute",
         "staff_password_reset": "3/hour",
+        "staff_set_password": "5/hour",
     },
 }
 SPECTACULAR_SETTINGS = {
@@ -114,7 +115,20 @@ MEDIA_ROOT = BASE_DIR / "private_media"
 MEDIA_URL = None
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default=(
+        "django.core.mail.backends.console.EmailBackend"
+        if DEBUG
+        else "django.core.mail.backends.smtp.EmailBackend"
+    ),
+)
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@localhost")
 
 # Keep session cookies host-only in every environment. Local development may
 # disable Secure for plain HTTP; production must keep this enabled.

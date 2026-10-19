@@ -52,8 +52,11 @@ class WorkspaceAdminSerializer(serializers.ModelSerializer):
 
 
 class StaffLoginSerializer(serializers.Serializer):
-    login_key = serializers.CharField(max_length=320)
+    email = serializers.EmailField(max_length=254)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_email(self, value):
+        return User.objects.normalize_email_address(value)
 
 
 class SetPasswordSerializer(serializers.Serializer):

@@ -84,6 +84,9 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Teacher/workspace onboarding transaction and invitation mail | `backend/apps/accounts/services.py` | Atomically create teacher/workspace; send invitation after commit; resend/reset password links |
 | Platform Admin and active workspace checks | `backend/apps/accounts/permissions.py` | Protect platform admin routes and reject staff auth for missing/suspended workspaces |
 | Staff password token and API routes | `backend/apps/accounts/tokens.py`, `backend/apps/accounts/urls.py`, `backend/apps/accounts/views.py` | Expiring, single-use password tokens; teacher login and password setup/reset |
+| Shared login-key construction | `backend/apps/accounts/identity.py` | Build a normalized workspace-scoped login key consistently in model saves and staff login |
+| Client-IP throttling | `backend/apps/accounts/views.py` | Throttle staff login, password reset, and set-password requests whether authenticated or anonymous |
+| Environment-driven email delivery | `backend/config/settings.py`, `backend/.env.example` | Configure console email in development and SMTP in production with environment values |
 
 ## 8. Decisions the design did not cover
 
@@ -119,4 +122,5 @@ Stage 2 verification, from `backend` with `$env:POSTGRES_DB = 'edu'`: `& '..\.ve
 - Local development sets `DJANGO_SESSION_COOKIE_SECURE=False` in `backend/.env.example` for HTTP `runserver`; production must keep it `True`. If unset, the setting defaults to `True`.
 - This workspace's PowerShell process can override `POSTGRES_DB` to `postgres`; set it to the application database before Django commands. Verification here used `edu`.
 - The `/teacher/set-password/` invitation/reset destination is a frontend route; this backend stage supplies the API but does not build the frontend page.
+- Every later stage must add suspended-workspace checks to its permission classes. Suspension blocks later requests but does not revoke teacher sessions already issued.
 - Existing root `.archify/` and `project/` directories are untracked now that their `.gitignore` entries were removed; they were left untouched.

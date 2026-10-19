@@ -1,8 +1,8 @@
-from django.contrib.auth import get_user_model
-from django.contrib.auth import authenticate, login
-from drf_spectacular.utils import extend_schema
+from django.contrib.auth import authenticate, get_user_model, login
+from django.db import IntegrityError
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status, throttling
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
@@ -10,6 +10,7 @@ from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 from apps.workspaces.models import Workspace
 
+from .identity import build_login_key
 from .permissions import ActiveWorkspaceSlugMixin, IsPlatformAdmin
 from .serializers import (
     PasswordResetSerializer,
@@ -34,12 +35,26 @@ from .tokens import staff_password_token
 User = get_user_model()
 
 
-class StaffLoginThrottle(throttling.AnonRateThrottle):
+class ClientIPRateThrottle(throttling.SimpleRateThrottle):
+    """Throttle by client IP regardless of authentication state."""
+
+    def get_cache_key(self, request, view):
+        ident = request.META.get("REMOTE_ADDR")
+        if not ident:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+class StaffLoginThrottle(ClientIPRateThrottle):
     scope = "staff_login"
 
 
-class StaffPasswordResetThrottle(throttling.AnonRateThrottle):
+class StaffPasswordResetThrottle(ClientIPRateThrottle):
     scope = "staff_password_reset"
+
+
+class StaffSetPasswordThrottle(ClientIPRateThrottle):
+    scope = "staff_set_password"
 
 
 class AdminTeacherListCreateView(APIView):
@@ -62,12 +77,21 @@ class AdminTeacherListCreateView(APIView):
     def post(self, request):
         serializer = TeacherCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        teacher, workspace, delivery = create_teacher_with_workspace(
-            full_name=serializer.validated_data["full_name"],
-            email=serializer.validated_data["email"],
-            workspace_name=serializer.validated_data["workspace_name"],
-            slug=serializer.validated_data["slug"],
-        )
+        try:
+            teacher, workspace, delivery = create_teacher_with_workspace(
+                full_name=serializer.validated_data["full_name"],
+                email=serializer.validated_data["email"],
+                workspace_name=serializer.validated_data["workspace_name"],
+                slug=serializer.validated_data["slug"],
+            )
+        except IntegrityError:
+            slug = serializer.validated_data["slug"]
+            if not Workspace.objects.filter(slug=slug).exists():
+                raise
+            return Response(
+                {"slug": ["A workspace already uses this slug."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(
             {
                 "teacher_id": teacher.pk,
@@ -108,8 +132,8 @@ class AdminTeacherResendInviteView(APIView):
             teacher = User.objects.get(pk=pk, role=User.Role.TEACHER)
         except User.DoesNotExist as exc:
             raise NotFound("Teacher not found.") from exc
-        resend_teacher_invitation(teacher)
-        return Response({"invitation_sent": True}, status=status.HTTP_200_OK)
+        invitation_sent = resend_teacher_invitation(teacher)
+        return Response({"invitation_sent": invitation_sent}, status=status.HTTP_200_OK)
 
 
 class AdminWorkspaceListView(generics.ListAPIView):
@@ -180,9 +204,12 @@ class StaffLoginView(ActiveWorkspaceSlugMixin, APIView):
     def post(self, request, slug):
         serializer = StaffLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        login_key = build_login_key(
+            self.workspace.pk, serializer.validated_data["email"]
+        )
         user = authenticate(
             request=request._request,
-            username=serializer.validated_data["login_key"],
+            username=login_key,
             password=serializer.validated_data["password"],
         )
         if (
@@ -202,6 +229,7 @@ class StaffLoginView(ActiveWorkspaceSlugMixin, APIView):
 
 class StaffSetPasswordView(ActiveWorkspaceSlugMixin, APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [StaffSetPasswordThrottle]
 
     @extend_schema(
         operation_id="staff_set_password",
@@ -214,10 +242,16 @@ class StaffSetPasswordView(ActiveWorkspaceSlugMixin, APIView):
         try:
             user_id = force_str(urlsafe_base64_decode(serializer.validated_data["uid"]))
             user = User.objects.get(
-                pk=user_id, role=User.Role.TEACHER, workspace=self.workspace
+                pk=user_id,
+                role=User.Role.TEACHER,
+                workspace=self.workspace,
+                is_active=True,
             )
-        except (ValueError, TypeError, OverflowError, UnicodeError, User.DoesNotExist) as exc:
-            raise NotFound("Invalid or expired password link.") from exc
+        except (ValueError, TypeError, OverflowError, UnicodeError, User.DoesNotExist):
+            return Response(
+                {"detail": "Invalid or expired password link."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not staff_password_token.check_token(user, serializer.validated_data["token"]):
             return Response(
                 {"detail": "Invalid or expired password link."},

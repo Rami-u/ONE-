@@ -4,6 +4,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from .identity import build_login_key
 from .managers import UserManager
 
 
@@ -73,8 +74,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def expected_login_key(self):
-        prefix = str(self.workspace_id) if self.workspace_id is not None else "admin"
-        return f"{prefix}:{self.email}"
+        return build_login_key(self.workspace_id, self.email)
 
     def save(self, *args, **kwargs):
         self.email = UserManager.normalize_email_address(self.email)

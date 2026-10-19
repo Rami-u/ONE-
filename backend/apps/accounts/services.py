@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
@@ -10,6 +12,7 @@ from apps.workspaces.models import Workspace
 from .tokens import staff_password_token
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 def password_link(user):
@@ -61,6 +64,9 @@ def create_teacher_with_workspace(*, full_name, email, workspace_name, slug):
         try:
             send_staff_password_email(teacher)
         except Exception:  # The committed account remains recoverable via resend-invite.
+            logger.warning(
+                "Teacher invitation delivery failed for user_id=%s.", teacher.pk
+            )
             return
         delivery["sent"] = True
 
@@ -69,8 +75,22 @@ def create_teacher_with_workspace(*, full_name, email, workspace_name, slug):
 
 
 def resend_teacher_invitation(teacher):
-    send_staff_password_email(teacher)
+    try:
+        send_staff_password_email(teacher)
+    except Exception:
+        logger.warning(
+            "Teacher invitation resend failed for user_id=%s.", teacher.pk
+        )
+        return False
+    return True
 
 
 def start_staff_password_reset(user):
-    send_staff_password_email(user, subject="Reset your teacher password")
+    try:
+        send_staff_password_email(user, subject="Reset your teacher password")
+    except Exception:
+        logger.warning(
+            "Staff password reset email delivery failed for user_id=%s.", user.pk
+        )
+        return False
+    return True
