@@ -106,4 +106,4 @@ From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scrip
 
 ## 11. Known problems
 
-- _none_
+- Django's required Secure session cookie prevents browser session login over plain HTTP `runserver`; use an HTTPS local proxy for authenticated admin use.

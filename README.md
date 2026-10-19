@@ -55,6 +55,8 @@ Start the development server and open the Django admin at the configured `DJANGO
 python manage.py runserver
 ```
 
+Session cookies are Secure as required by the authentication design. Django's built-in `runserver` serves plain HTTP, so use an HTTPS local proxy when you need to complete an admin login in a browser. The `createsuperuser` command works without browser access.
+
 ## API documentation
 
 Set `DJANGO_ENABLE_API_DOCS=True` to enable `GET /api/schema/` and `GET /api/docs/`. The example environment enables them for development. Set it to `False` to make both paths return 404.
