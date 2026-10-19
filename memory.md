@@ -1,0 +1,109 @@
+# memory.md - Project memory for the coding agent
+
+**Read this file first, at the start of every session.** It is the map and the current state of the project, so you do not need to scan the whole repository.
+
+It is **not a copy of the design.** For details, read only the design sections named in your prompt or in the index below. It is also **not a log of everything you did**: keep it short (about 200 lines at most) and rewrite entries instead of appending forever.
+
+You update it at the end of every stage, in the same commit as the code (see AGENTS.md, definition of done). If this file and the code disagree, the code is right: fix this file and mention it in your report.
+
+---
+
+## 1. The project in five lines
+
+- A multi-tenant educational platform: each teacher has a workspace on their own sub-domain.
+- Backend only for now: Django + Django REST Framework + PostgreSQL, session authentication.
+- Roles: Platform Admin (no workspace), teacher, student (assistant is planned, not active).
+- Flow: admin creates a teacher and workspace, students register and wait for approval, then enroll in free or paid courses (manual payment confirmed by the teacher).
+- AI quiz generation, mistake analysis, and proctoring are planned for later and are **not built** in this round.
+
+## 2. Files and when to read them
+
+| File | What it is | When to read |
+|---|---|---|
+| `memory.md` | This file: map, status, decisions | Every session, first |
+| `AGENTS.md` | Rules, patterns, definition of done | Every session, completely |
+| `docs/backend-design.md` | The full design | Only the sections named in your prompt |
+| `README.md` | How to run, test, add a feature | When setting up or finishing a stage |
+| `backend/.env.example` | Every environment variable | When touching settings |
+
+## 3. Design index: which section answers what
+
+| Question | Section |
+|---|---|
+| What is in and out of this round? | Build Scope (top of the design), section 15 |
+| Roles and what each may do | 2, 9.6 |
+| User flows | 4.1 directory, 4.2 teacher onboarding, 4.3 students, 4.4 enrollment and payment |
+| Fields, choices, constraints of a table | 5.x (one subsection per table) |
+| How tables relate | 6.1 |
+| Endpoints and who may call them | 7.1 public, 7.2 student auth, 7.3 staff auth, 7.4 admin, 7.5 workspace and students, 7.6 courses, 7.7 payments, 7.9 out of scope |
+| Request and response examples | 8.x |
+| Authentication, permissions, tenant isolation, isolation tests | 9.1-9.7 |
+| App layout | 10.1 |
+| Business rules that must never break | 12 |
+| Sub-domains and local development | 13 |
+| Stage order and what each stage contains | 14 |
+| Decisions already made | 15 |
+
+## 4. Scope reminder
+
+- **Built this round:** Stages 1-5 working with tests; Stage 6 as models-only skeleton.
+- **Not built, do not add:** frontend, deployment, AI generation, mistake analysis, proctoring, assistant permissions, email verification, online payments, refunds, endpoints for sections, lessons, assets, and assessments.
+- **Placeholders:** `apps/ai/` and `apps/proctoring/` are empty (README only).
+
+## 5. Status
+
+Update the row of the stage you worked on. Statuses: `not started`, `in progress`, `done - awaiting review`, `merged`.
+
+| Stage | Content | Status | Branch | Reviewer |
+|---|---|---|---|---|
+| 1 | Bootstrap, workspaces, accounts | done - awaiting review | stage-1-foundation | - |
+| 2 | Teacher onboarding, staff login | not started | - | - |
+| 3 | Public showcase, workspace settings | not started | - | - |
+| 4 | Student registration, login, approval | not started | - | - |
+| 5 | Courses, enrollment, manual payments | not started | - | - |
+| 6 | Content and assessment skeleton | not started | - | - |
+
+## 6. Repository map
+
+Fill this in as apps are created. One row per app, kept to one line each.
+
+| App | Responsibility | Key models | Endpoints (prefix `/api/v1/`) | Stage |
+|---|---|---|---|---|
+| workspaces | Tenant configuration and identity; `Workspace` | None (Stage 1) | 1 |
+| accounts | Custom authentication identity; `User` | None (Stage 1) | 1 |
+
+## 7. Reusable building blocks
+
+The patterns the team will copy. Record where each one lives so nobody rewrites it.
+
+| Name | Location | Use it for |
+|---|---|---|
+| Workspace slug validator | `backend/apps/workspaces/validators.py` | Enforce normalized slug syntax and reserved names |
+| Workspace slug immutability | `backend/apps/workspaces/models.py` | Reject slug changes after creation |
+| User manager and login key derivation | `backend/apps/accounts/managers.py`, `backend/apps/accounts/models.py` | Create workspace accounts and Platform Admins; derive normalized login keys |
+
+## 8. Decisions the design did not cover
+
+One line each: what you decided, why, and the stage. The reviewer checks this list.
+
+- Workspace slugs use 3–63 lowercase letters/digits joined by single hyphens; additionally reserve `auth`, `accounts`, `dashboard`, `billing`, `docs`, `help`, `cdn`, `assets`, and `files` to keep common service subdomains unavailable to workspaces (Stage 1).
+- Workspace logos are stored as nullable URL references, matching the design's “image URL/reference” without introducing uploads in Stage 1.
+- New accounts default to pending approval; the user manager marks teacher, assistant, and Platform Admin accounts approved on creation.
+- Exact dependencies are pinned to Django 6.0.8, DRF 3.17.2, drf-spectacular 0.30.0, psycopg 3.3.6, and django-environ 0.14.0 for the Python 3.14.4 environment and documented framework compatibility.
+
+## 9. Deferred to later rounds
+
+- Endpoints for course sections, lessons, and lesson assets (the design has none yet).
+- Exam-taking endpoints and the rule that exam access needs an active enrollment.
+- AI question generation, mistake analysis, and proctoring.
+- Assistant permissions.
+- React frontend and sub-domain deployment.
+- Email verification, refunds, receipt retention, online payments.
+
+## 10. How to run
+
+From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`; `python manage.py test`. Checks: `python manage.py check` and `python manage.py makemigrations --check --dry-run`.
+
+## 11. Known problems
+
+- _none_

@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+project/db.sqlite3
+project/frontend/node_modules/
+project/frontend/dist/
+backend/.env
+backend/private_media/
+backend/staticfiles/
+.archify/
+.vscode/
+tmp/
