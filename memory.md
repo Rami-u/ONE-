@@ -56,8 +56,8 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 
 | Stage | Content | Status | Branch | Reviewer |
 |---|---|---|---|---|
-| 1 | Bootstrap, workspaces, accounts | merged | stage-1-fixes | - |
-| 2 | Teacher onboarding, staff login | done - awaiting review | stage-2-teacher-onboarding | - |
+| 1 | Bootstrap, workspaces, accounts | merged (PR #1) | stage-1-fixes | - |
+| 2 | Teacher onboarding, staff login | merged (PR #2); hardening in progress | stage-2-teacher-onboarding; stage-2-hardening | - |
 | 3 | Public showcase, workspace settings | not started | - | - |
 | 4 | Student registration, login, approval | not started | - | - |
 | 5 | Courses, enrollment, manual payments | not started | - | - |
@@ -85,8 +85,8 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Platform Admin and active workspace checks | `backend/apps/accounts/permissions.py` | Protect platform admin routes and reject staff auth for missing/suspended workspaces |
 | Staff password token and API routes | `backend/apps/accounts/tokens.py`, `backend/apps/accounts/urls.py`, `backend/apps/accounts/views.py` | Expiring, single-use password tokens; teacher login and password setup/reset |
 | Shared login-key construction | `backend/apps/accounts/identity.py` | Build a normalized workspace-scoped login key consistently in model saves and staff login |
-| Client-IP throttling | `backend/apps/accounts/views.py` | Throttle staff login, password reset, and set-password requests whether authenticated or anonymous |
-| Environment-driven email delivery | `backend/config/settings.py`, `backend/.env.example` | Configure console email in development and SMTP in production with environment values |
+| Client-IP throttling | `backend/apps/accounts/views.py`, `backend/config/settings.py`, `backend/.env.example` | Use DRF `get_ident` for all staff auth throttles; set trusted proxy count with `DRF_NUM_PROXIES` (default 0) |
+| Environment-driven email delivery and token expiry | `backend/config/settings.py`, `backend/apps/accounts/services.py`, `backend/.env.example` | Configure console/SMTP delivery and `PASSWORD_RESET_TIMEOUT_SECONDS` (default 259200); email links state expiry in days |
 
 ## 8. Decisions the design did not cover
 
@@ -100,6 +100,7 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Invitation and reset hosts are built from `PLATFORM_URL_SCHEME` and `PLATFORM_BASE_DOMAIN` (defaults `https` and `edunova.com`) so the design's example domain is configurable (Stage 2).
 - Invitation links target the workspace's `/teacher/set-password/` frontend route and carry `uid` and token as query parameters; the frontend submits them to the API (Stage 2).
 - Staff auth throttle rates are 5 login attempts/minute, 3 password-reset starts/hour, and 5 set-password attempts/hour per client IP; the design requires throttling but does not specify rates (Stage 2).
+- DRF throttling uses `SimpleRateThrottle.get_ident`; `DRF_NUM_PROXIES=0` ignores forwarded IP headers, and deployments set it to the known trusted proxy count. Email expiry is displayed as an upper-bound whole number of days so the text remains accurate for non-whole-day timeout values (Stage 2 hardening).
 
 ## 9. Deferred to later rounds
 
@@ -116,7 +117,7 @@ From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scrip
 
 Stage 1 fixes verification, from `backend` with the local database override: `$env:POSTGRES_DB = 'edu'`; `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py test`.
 
-Stage 2 verification, from `backend` with `$env:POSTGRES_DB = 'edu'`: `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py spectacular --validate --file ..\stage2-openapi.yaml`; `& '..\.venv\Scripts\python.exe' manage.py test`.
+Stage 2 hardening verification, from `backend` with `$env:POSTGRES_DB = 'edu'`: `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py spectacular --validate --file ..\stage2-openapi.yaml`; `& '..\.venv\Scripts\python.exe' manage.py test`.
 
 ## 11. Known problems
 
@@ -124,4 +125,5 @@ Stage 2 verification, from `backend` with `$env:POSTGRES_DB = 'edu'`: `& '..\.ve
 - This workspace's PowerShell process can override `POSTGRES_DB` to `postgres`; set it to the application database before Django commands. Verification here used `edu`.
 - The `/teacher/set-password/` invitation/reset destination is a frontend route; this backend stage supplies the API but does not build the frontend page.
 - Every later stage must add suspended-workspace checks to its permission classes. Suspension blocks later requests but does not revoke teacher sessions already issued.
+- Password-reset responses have the same body for known and unknown emails, but response time can still reveal account existence because email is sent in the request; move reset email delivery to a background task later.
 - Existing root `.archify/` and `project/` directories are untracked now that their `.gitignore` entries were removed; they were left untouched.

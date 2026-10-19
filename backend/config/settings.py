@@ -97,6 +97,9 @@ REST_FRAMEWORK = {
         "staff_password_reset": "3/hour",
         "staff_set_password": "5/hour",
     },
+    # Trust forwarded client IPs only when the deployment has configured its
+    # exact number of trusted reverse proxies. Zero ignores X-Forwarded-For.
+    "NUM_PROXIES": env.int("DRF_NUM_PROXIES", default=0),
 }
 SPECTACULAR_SETTINGS = {
     "TITLE": "Educational Platform API",
@@ -135,6 +138,7 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@localhost")
 SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=True)
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT_SECONDS", default=259200)
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS", default=["https://*.edunova.com"]
 )
