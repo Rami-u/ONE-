@@ -3,7 +3,7 @@ from functools import wraps
 from django.conf import settings
 from django.contrib import admin
 from django.http import Http404
-from django.urls import path
+from django.urls import include, path
 
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
@@ -18,6 +18,7 @@ def api_docs_when_enabled(view):
     return wrapped
 
 urlpatterns = [path(settings.DJANGO_ADMIN_PATH, admin.site.urls)]
+urlpatterns += [path("api/v1/", include("apps.accounts.urls"))]
 urlpatterns += [
     path(
         "api/schema/",
