@@ -23,6 +23,7 @@ class StudentListView(WorkspaceSlugMixin, APIView):
     serializer_class = StudentReviewSerializer
 
     @extend_schema(
+        description="List students in this workspace for the teacher.",
         parameters=[
             OpenApiParameter(
                 name="status",
@@ -64,6 +65,7 @@ class StudentApproveView(WorkspaceSlugMixin, APIView):
     serializer_class = StudentReviewSerializer
 
     @extend_schema(
+        description="Approve a pending student in this workspace.",
         request=None,
         responses={200: StudentReviewSerializer, 409: StudentReviewConflictSerializer},
     )
@@ -83,6 +85,7 @@ class StudentRejectView(WorkspaceSlugMixin, APIView):
     serializer_class = StudentRejectSerializer
 
     @extend_schema(
+        description="Reject a pending student in this workspace with a reason.",
         request=StudentRejectSerializer,
         responses={200: StudentReviewSerializer, 409: StudentReviewConflictSerializer},
     )

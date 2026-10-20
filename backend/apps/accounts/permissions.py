@@ -68,7 +68,7 @@ class IsWorkspaceMember(BasePermission):
 
 
 class ActiveWorkspaceSlugMixin:
-    """Resolve a workspace from the URL and make its active status available."""
+    # Resolve a workspace from the URL and make its active status available.
 
     workspace = None
     unavailable_message = "This workspace is suspended."
@@ -86,6 +86,6 @@ class ActiveWorkspaceSlugMixin:
 
 
 class WorkspaceSlugMixin(ActiveWorkspaceSlugMixin):
-    """Resolve an active workspace using the public-workspace error contract."""
+    # Resolve an active workspace using the public-workspace error contract.
 
     unavailable_message = "Workspace is unavailable."

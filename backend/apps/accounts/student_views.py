@@ -58,7 +58,11 @@ class StudentCSRFCookieView(WorkspaceSlugMixin, APIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = None
 
-    @extend_schema(request=None, responses={204: None})
+    @extend_schema(
+        description="Set a CSRF cookie for subsequent session-authenticated requests.",
+        request=None,
+        responses={204: None},
+    )
     def get(self, request, slug):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -69,6 +73,7 @@ class StudentRegisterView(WorkspaceSlugMixin, APIView):
     serializer_class = StudentRegisterSerializer
 
     @extend_schema(
+        description="Register a pending student account in this workspace.",
         request=StudentRegisterSerializer,
         responses={201: StudentRegistrationResponseSerializer},
     )
@@ -114,6 +119,7 @@ class StudentLoginView(WorkspaceSlugMixin, APIView):
     serializer_class = StudentLoginSerializer
 
     @extend_schema(
+        description="Start a session for an approved student.",
         request=StudentLoginSerializer,
         responses={
             200: StudentLoginResponseSerializer,
@@ -165,7 +171,11 @@ class StudentLogoutView(WorkspaceSlugMixin, APIView):
     permission_classes = [IsWorkspaceMember]
     serializer_class = StudentMessageSerializer
 
-    @extend_schema(request=None, responses={204: None})
+    @extend_schema(
+        description="End the current workspace member session.",
+        request=None,
+        responses={204: None},
+    )
     def post(self, request, slug):
         logout(request._request)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -175,7 +185,10 @@ class StudentMeView(WorkspaceSlugMixin, APIView):
     permission_classes = [IsWorkspaceMember]
     serializer_class = StudentMeSerializer
 
-    @extend_schema(responses=StudentMeSerializer)
+    @extend_schema(
+        description="Return the signed-in workspace member.",
+        responses=StudentMeSerializer,
+    )
     def get(self, request, slug):
         return Response(StudentMeSerializer(request.user, context={"request": request}).data)
 
@@ -213,6 +226,7 @@ class StudentPasswordResetView(WorkspaceSlugMixin, APIView):
     serializer_class = StudentPasswordResetSerializer
 
     @extend_schema(
+        description="Send a password-reset link when an active student account exists.",
         request=StudentPasswordResetSerializer,
         responses={200: MessageSerializer},
     )
@@ -243,6 +257,7 @@ class StudentPasswordResetConfirmView(WorkspaceSlugMixin, APIView):
     serializer_class = StudentPasswordResetConfirmSerializer
 
     @extend_schema(
+        description="Set a new password with a valid student reset link.",
         request=StudentPasswordResetConfirmSerializer,
         responses={200: MessageSerializer, 400: MessageSerializer},
     )
