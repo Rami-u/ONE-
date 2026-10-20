@@ -1,6 +1,5 @@
 from django.db.models import Prefetch
 from rest_framework import filters, generics, status
-from rest_framework.exceptions import NotFound
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -55,7 +54,6 @@ class PublicTeacherProfileView(generics.RetrieveAPIView):
 
 
 class PublicWorkspaceSlugMixin(ActiveWorkspaceSlugMixin):
-    unavailable_exception = NotFound
     unavailable_message = "Workspace is unavailable."
 
 

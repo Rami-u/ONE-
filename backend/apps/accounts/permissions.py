@@ -17,7 +17,6 @@ class ActiveWorkspaceSlugMixin:
     """Resolve a workspace from the URL and make its active status available."""
 
     workspace = None
-    unavailable_exception = PermissionDenied
     unavailable_message = "This workspace is suspended."
 
     def initial(self, request, *args, **kwargs):
@@ -28,5 +27,5 @@ class ActiveWorkspaceSlugMixin:
         except Workspace.DoesNotExist as exc:
             raise NotFound("Workspace not found.") from exc
         if self.workspace.status != Workspace.Status.ACTIVE:
-            raise self.unavailable_exception(self.unavailable_message)
+            raise PermissionDenied(self.unavailable_message)
         super().initial(request, *args, **kwargs)

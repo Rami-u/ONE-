@@ -100,17 +100,45 @@ class PublicShowcaseTests(APITestCase):
             self.assert_no_private_fields(response.data)
         profile = self.client.get("/api/v1/workspaces/hidden/public-profile/")
         self.assertEqual(profile.data["courses"], [])
-        self.assertEqual(
-            self.client.get("/api/v1/workspaces/stopped/branding/").status_code, 404
-        )
+        suspended_branding = self.client.get("/api/v1/workspaces/stopped/branding/")
+        self.assertEqual(suspended_branding.status_code, 403)
+        self.assertEqual(suspended_branding.data["detail"], "Workspace is unavailable.")
         unavailable = self.client.get("/api/v1/workspaces/stopped/public-profile/")
-        self.assertEqual(unavailable.status_code, 404)
+        self.assertEqual(unavailable.status_code, 403)
         self.assertEqual(unavailable.data["detail"], "Workspace is unavailable.")
-        for route in (
-            "/api/v1/workspaces/missing/branding/",
-            "/api/v1/workspaces/missing/public-profile/",
-        ):
-            self.assertEqual(self.client.get(route).status_code, 404)
+        unknown_branding = self.client.get("/api/v1/workspaces/missing/branding/")
+        unknown_profile = self.client.get("/api/v1/workspaces/missing/public-profile/")
+        self.assertEqual(unknown_branding.status_code, 404)
+        self.assertEqual(unknown_branding.data["detail"], "Workspace not found.")
+        self.assertEqual(unknown_profile.status_code, 404)
+        self.assertEqual(unknown_profile.data["detail"], "Workspace not found.")
+        self.assertNotEqual(suspended_branding.status_code, unknown_branding.status_code)
+
+    def test_suspended_workspace_settings_are_forbidden_without_changes(self):
+        teacher = self.suspended.users.get(role=User.Role.TEACHER)
+        self.client.force_authenticate(teacher)
+        original_name = self.suspended.name
+
+        get_response = self.client.get("/api/v1/workspaces/stopped/")
+        patch_response = self.client.patch(
+            "/api/v1/workspaces/stopped/", {"name": "Must Not Change"}, format="json"
+        )
+        self.assertEqual(get_response.status_code, 403)
+        self.assertEqual(get_response.data["detail"], "Workspace is unavailable.")
+        self.assertEqual(patch_response.status_code, 403)
+        self.assertEqual(patch_response.data["detail"], "Workspace is unavailable.")
+        self.suspended.refresh_from_db()
+        self.assertEqual(self.suspended.name, original_name)
+
+    def test_workspace_settings_require_authentication_for_get_and_patch(self):
+        get_response = self.client.get("/api/v1/workspaces/listed/")
+        patch_response = self.client.patch(
+            "/api/v1/workspaces/listed/", {"name": "Must Not Change"}, format="json"
+        )
+        self.assertEqual(get_response.status_code, 403)
+        self.assertEqual(patch_response.status_code, 403)
+        self.listed.refresh_from_db()
+        self.assertEqual(self.listed.name, "Listed Science")
 
     def test_existing_logo_url_references_remain_publicly_usable(self):
         self.listed.logo = "https://cdn.example.com/legacy-logo.png"
