@@ -57,7 +57,7 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 | Stage | Content | Status | Branch | Reviewer |
 |---|---|---|---|---|
 | 1 | Bootstrap, workspaces, accounts | merged (PR #1) | stage-1-fixes | - |
-| 2 | Teacher onboarding, staff login | merged (PR #2); hardening in progress | stage-2-teacher-onboarding; stage-2-hardening | - |
+| 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
 | 3 | Public showcase, workspace settings | not started | - | - |
 | 4 | Student registration, login, approval | not started | - | - |
 | 5 | Courses, enrollment, manual payments | not started | - | - |
@@ -115,15 +115,35 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 
 From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`.
 
-Stage 1 fixes verification, from `backend` with the local database override: `$env:POSTGRES_DB = 'edu'`; `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py test`.
-
-Stage 2 hardening verification, from `backend` with `$env:POSTGRES_DB = 'edu'`: `& '..\.venv\Scripts\python.exe' manage.py check`; `& '..\.venv\Scripts\python.exe' manage.py makemigrations --check --dry-run`; `& '..\.venv\Scripts\python.exe' manage.py spectacular --validate --file ..\stage2-openapi.yaml`; `& '..\.venv\Scripts\python.exe' manage.py test`.
+Verify a stage: from `backend/` with the virtual environment active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
 
 ## 11. Known problems
 
 - Local development sets `DJANGO_SESSION_COOKIE_SECURE=False` in `backend/.env.example` for HTTP `runserver`; production must keep it `True`. If unset, the setting defaults to `True`.
-- This workspace's PowerShell process can override `POSTGRES_DB` to `postgres`; set it to the application database before Django commands. Verification here used `edu`.
 - The `/teacher/set-password/` invitation/reset destination is a frontend route; this backend stage supplies the API but does not build the frontend page.
 - Every later stage must add suspended-workspace checks to its permission classes. Suspension blocks later requests but does not revoke teacher sessions already issued.
 - Password-reset responses have the same body for known and unknown emails, but response time can still reveal account existence because email is sent in the request; move reset email delivery to a background task later.
-- Existing root `.archify/` and `project/` directories are untracked now that their `.gitignore` entries were removed; they were left untouched.
+
+## 12. Production deployment checklist
+
+Set these in the server's `backend/.env`; never copy `.env.example` as-is. Variable names come from `backend/.env.example`.
+
+| Variable | Dev example | Production |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | `replace-with-a-long-random-secret` | Generate a new long random secret. |
+| `DJANGO_DEBUG` | `True` | `False` |
+| `DJANGO_ENABLE_API_DOCS` | `True` | `False` |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,testserver` | `.<domain>,<domain>`; the leading dot covers every teacher sub-domain. |
+| `CSRF_TRUSTED_ORIGINS` | `https://*.edunova.com` | `https://*.<domain>` |
+| `PLATFORM_BASE_DOMAIN`, `PLATFORM_URL_SCHEME` | `edunova.com`, `https` | Your real domain, `https`. |
+| `DJANGO_SESSION_COOKIE_SECURE` | `False` for local HTTP | `True` |
+| `DJANGO_ADMIN_PATH` | `platform-admin/` | Use a non-guessable path. |
+| `DRF_NUM_PROXIES` | `0` | Set to `1` only when exactly one trusted proxy is in front of Django. |
+| `EMAIL_BACKEND` | `.env.example` explicitly sets the console backend | Switch to `django.core.mail.backends.smtp.EmailBackend` or delete the line to use the non-debug SMTP default. Configure `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, and `DEFAULT_FROM_EMAIL`. |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT` | Local PostgreSQL values | Set real database connection details and credentials. |
+
+Never set `SESSION_COOKIE_DOMAIN` (AGENTS.md section 7).
+
+Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment. It currently warns that `SECURE_SSL_REDIRECT` is not enabled, `SECURE_HSTS_SECONDS` is unset, and `CSRF_COOKIE_SECURE` is not enabled; record these as pre-deployment TODOs.
+
+`backend/requirements.txt` has no WSGI server or static-file package; deployment needs `collectstatic` and a web server for `/static/`.
