@@ -65,7 +65,10 @@ class WorkspaceBrandingView(PublicWorkspaceSlugMixin, APIView):
 
     @extend_schema(responses=WorkspaceBrandingSerializer)
     def get(self, request, slug):
-        return Response(WorkspaceBrandingSerializer(self.workspace).data)
+        serializer = WorkspaceBrandingSerializer(
+            self.workspace, context={"request": request}
+        )
+        return Response(serializer.data)
 
 
 class WorkspacePublicProfileView(PublicWorkspaceSlugMixin, APIView):
@@ -75,7 +78,10 @@ class WorkspacePublicProfileView(PublicWorkspaceSlugMixin, APIView):
     @extend_schema(responses=PublicTeacherProfileSerializer)
     def get(self, request, slug):
         workspace = workspace_with_teacher_queryset().get(pk=self.workspace.pk)
-        return Response(PublicTeacherProfileSerializer(workspace).data)
+        serializer = PublicTeacherProfileSerializer(
+            workspace, context={"request": request}
+        )
+        return Response(serializer.data)
 
 
 class WorkspaceSettingsView(PublicWorkspaceSlugMixin, APIView):
@@ -85,12 +91,18 @@ class WorkspaceSettingsView(PublicWorkspaceSlugMixin, APIView):
 
     @extend_schema(responses=WorkspaceSettingsSerializer)
     def get(self, request, slug):
-        return Response(WorkspaceSettingsSerializer(self.workspace).data)
+        serializer = WorkspaceSettingsSerializer(
+            self.workspace, context={"request": request}
+        )
+        return Response(serializer.data)
 
     @extend_schema(request=WorkspaceSettingsSerializer, responses=WorkspaceSettingsSerializer)
     def patch(self, request, slug):
         serializer = WorkspaceSettingsSerializer(
-            self.workspace, data=request.data, partial=True
+            self.workspace,
+            data=request.data,
+            partial=True,
+            context={"request": request},
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()

@@ -120,6 +120,36 @@ class PublicShowcaseTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["logo"], self.listed.logo.name)
 
+    def test_uploaded_logo_url_is_identical_across_public_endpoints(self):
+        from apps.workspaces.storage import public_logo_storage
+
+        teacher = self.listed.users.get(role=User.Role.TEACHER)
+        self.client.force_authenticate(teacher)
+        settings_response = self.client.patch(
+            "/api/v1/workspaces/listed/",
+            {"logo": image_upload()},
+            format="multipart",
+        )
+        self.assertEqual(settings_response.status_code, 200, settings_response.data)
+        self.listed.refresh_from_db()
+        logo_path = self.listed.logo.name
+        self.addCleanup(public_logo_storage.delete, logo_path)
+
+        endpoint_values = [
+            settings_response.data["logo"],
+            self.client.get("/api/v1/workspaces/listed/branding/").data["logo"],
+            self.client.get("/api/v1/workspaces/listed/public-profile/").data["logo"],
+            self.client.get("/api/v1/public/teachers/listed/").data["logo"],
+            next(
+                item["logo"]
+                for item in self.client.get("/api/v1/public/teachers/").data["results"]
+                if item["slug"] == "listed"
+            ),
+        ]
+        self.assertTrue(endpoint_values[0].startswith("http://testserver/media/"))
+        self.assertTrue(endpoint_values[0].endswith(logo_path))
+        self.assertEqual(endpoint_values, [endpoint_values[0]] * 5)
+
     def test_settings_patch_is_scoped_teacher_only_and_slug_is_immutable(self):
         teacher = self.listed.users.get(role=User.Role.TEACHER)
         self.client.force_authenticate(teacher)
@@ -168,8 +198,9 @@ class PublicShowcaseTests(APITestCase):
         url = "/api/v1/workspaces/listed/"
         valid = self.client.patch(url, {"logo": image_upload()}, format="multipart")
         self.assertEqual(valid.status_code, 200, valid.data)
-        self.assertTrue(valid.data["logo"].startswith("/media/workspace_logos/"))
         self.listed.refresh_from_db()
+        self.assertTrue(valid.data["logo"].startswith("http://testserver/media/"))
+        self.assertTrue(valid.data["logo"].endswith(self.listed.logo.name))
         self.assertTrue(public_logo_storage.exists(self.listed.logo.name))
         self.addCleanup(public_logo_storage.delete, self.listed.logo.name)
 
