@@ -33,6 +33,40 @@ class IsWorkspaceTeacher(BasePermission):
         )
 
 
+class IsApprovedStudent(BasePermission):
+    """Allow an approved student in the active workspace from the URL."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        workspace = getattr(view, "workspace", None)
+        return bool(
+            user
+            and user.is_authenticated
+            and user.role == User.Role.STUDENT
+            and user.approval_status == User.ApprovalStatus.APPROVED
+            and workspace is not None
+            and workspace.status == Workspace.Status.ACTIVE
+            and user.workspace_id == workspace.pk
+        )
+
+
+class IsWorkspaceMember(BasePermission):
+    """Allow an approved teacher or student in the active URL workspace."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        workspace = getattr(view, "workspace", None)
+        return bool(
+            user
+            and user.is_authenticated
+            and user.role in {User.Role.TEACHER, User.Role.STUDENT}
+            and user.approval_status == User.ApprovalStatus.APPROVED
+            and workspace is not None
+            and workspace.status == Workspace.Status.ACTIVE
+            and user.workspace_id == workspace.pk
+        )
+
+
 class ActiveWorkspaceSlugMixin:
     """Resolve a workspace from the URL and make its active status available."""
 
