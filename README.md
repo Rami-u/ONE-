@@ -88,9 +88,13 @@ Registration, login, reset, and reset-confirm are throttled by client IP. Suspen
 
 ### Trying session endpoints by hand
 
-These commands assume `cookies.txt` already contains a teacher session from the staff login endpoint. The CSRF request writes `csrftoken` into the same cookie jar; the approval request sends it back in `X-CSRFToken`.
+Sign in as the teacher first. This creates `cookies.txt` with the teacher session. The CSRF request adds `csrftoken` to the same cookie jar; the approval request sends it back in `X-CSRFToken`.
 
 ```powershell
+curl.exe -c cookies.txt -X POST `
+  -H "Content-Type: application/json" `
+  --data '{"email":"teacher@example.com","password":"replace-with-password"}' `
+  http://127.0.0.1:8000/api/v1/workspaces/science/staff/auth/login/
 curl.exe -c cookies.txt -b cookies.txt http://127.0.0.1:8000/api/v1/workspaces/science/auth/csrf/
 $csrfLine = Get-Content .\cookies.txt | Where-Object { $_ -match '\scsrftoken\s' } | Select-Object -Last 1
 $csrfToken = ($csrfLine.Trim() -split '\s+')[-1]
@@ -98,7 +102,21 @@ curl.exe -c cookies.txt -b cookies.txt -X POST `
   -H "Content-Type: application/json" `
   -H "X-CSRFToken: $csrfToken" `
   --data '{}' `
-  http://127.0.0.1:8000/api/v1/workspaces/science/students/45/approve/
+  http://127.0.0.1:8000/api/v1/workspaces/science/students/{student_id}/approve/
+```
+
+```bash
+curl -c cookies.txt -X POST \
+  -H 'Content-Type: application/json' \
+  --data '{"email":"teacher@example.com","password":"replace-with-password"}' \
+  http://127.0.0.1:8000/api/v1/workspaces/science/staff/auth/login/
+curl -c cookies.txt -b cookies.txt http://127.0.0.1:8000/api/v1/workspaces/science/auth/csrf/
+csrf_token=$(awk '$6 == "csrftoken" { token = $7 } END { print token }' cookies.txt)
+curl -c cookies.txt -b cookies.txt -X POST \
+  -H 'Content-Type: application/json' \
+  -H "X-CSRFToken: $csrf_token" \
+  --data '{}' \
+  http://127.0.0.1:8000/api/v1/workspaces/science/students/{student_id}/approve/
 ```
 
 ### Troubleshooting
