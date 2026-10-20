@@ -3,3 +3,4 @@ djangorestframework==3.17.2
 drf-spectacular==0.30.0
 psycopg[binary]==3.3.6
 django-environ==0.14.0
+Pillow==12.3.0

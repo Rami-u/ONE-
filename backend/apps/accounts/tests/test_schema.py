@@ -23,6 +23,26 @@ class SchemaEndpointTests(APITestCase):
             set(request_schema["properties"]), {"email", "password"}
         )
 
+        profile = schema["paths"]["/api/v1/public/teachers/{slug}/"]["get"]
+        profile_schema = profile["responses"]["200"]["content"]["application/json"]["schema"]
+        profile_schema = schema["components"]["schemas"][
+            profile_schema["$ref"].rsplit("/", 1)[-1]
+        ]
+        self.assertEqual(
+            set(profile_schema["properties"]),
+            {"slug", "name", "teacher_name", "logo", "headline", "bio", "about", "courses"},
+        )
+
+        settings_patch = schema["paths"]["/api/v1/workspaces/{slug}/"]["patch"]
+        self.assertIn(
+            "multipart/form-data", settings_patch["requestBody"]["content"]
+        )
+        settings_request = settings_patch["requestBody"]["content"]["multipart/form-data"]["schema"]
+        settings_request = schema["components"]["schemas"][
+            settings_request["$ref"].rsplit("/", 1)[-1]
+        ]
+        self.assertEqual(settings_request["properties"]["logo"]["format"], "binary")
+
     @override_settings(ENABLE_API_DOCS=False)
     def test_schema_endpoint_is_hidden_when_disabled(self):
         response = APIClient().get("/api/schema/")

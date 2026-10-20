@@ -58,7 +58,7 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 |---|---|---|---|---|
 | 1 | Bootstrap, workspaces, accounts | merged (PR #1) | stage-1-fixes | - |
 | 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
-| 3 | Public showcase, workspace settings | not started | - | - |
+| 3 | Public showcase, workspace settings | done - awaiting review | stage-3-public-showcase | - |
 | 4 | Student registration, login, approval | not started | - | - |
 | 5 | Courses, enrollment, manual payments | not started | - | - |
 | 6 | Content and assessment skeleton | not started | - | - |
@@ -71,6 +71,7 @@ Fill this in as apps are created. One row per app, kept to one line each.
 |---|---|---|---|---|
 | workspaces | Tenant configuration and identity; admin workspace lifecycle | `Workspace` | Admin workspace list/detail/suspend/activate (`admin/workspaces/`) | 2 |
 | accounts | Custom identity, teacher onboarding, and staff auth | `User` | Admin teacher management (`admin/teachers/`); staff auth (`workspaces/{slug}/staff/auth/`) | 2 |
+| public | Safe teacher directory, profiles, branding, and teacher workspace settings | `Workspace` (uses `User` for teacher display name) | Public teacher directory/profile; workspace branding/public-profile/settings | 3 |
 
 ## 7. Reusable building blocks
 
@@ -87,13 +88,16 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Shared login-key construction | `backend/apps/accounts/identity.py` | Build a normalized workspace-scoped login key consistently in model saves and staff login |
 | Client-IP throttling | `backend/apps/accounts/views.py`, `backend/config/settings.py`, `backend/.env.example` | Use DRF `get_ident` for all staff auth throttles; set trusted proxy count with `DRF_NUM_PROXIES` (default 0) |
 | Environment-driven email delivery and token expiry | `backend/config/settings.py`, `backend/apps/accounts/services.py`, `backend/.env.example` | Configure console/SMTP delivery and `PASSWORD_RESET_TIMEOUT_SECONDS` (default 259200); email links state expiry in days |
+| Workspace URL resolver and role permission | `backend/apps/accounts/permissions.py`, extended by `backend/apps/public/views.py` and `backend/apps/public/permissions.py` | Resolve `view.workspace` from the URL slug, enforce active status, and restrict settings to its approved teacher |
+| Safe public response serializers and logo validation/storage | `backend/apps/public/serializers.py`, `backend/apps/workspaces/image_validators.py`, `backend/apps/workspaces/storage.py` | Restrict showcase fields; validate public JPEG/PNG/WebP logos and store uploads separately from private media |
+| Public showcase endpoint tests | `backend/apps/public/tests/test_public_api.py` | Cover visibility, search, pagination, safe fields, workspace scoping, settings, and logo validation |
 
 ## 8. Decisions the design did not cover
 
 One line each: what you decided, why, and the stage. The reviewer checks this list.
 
 - Workspace slugs use 3–63 lowercase letters/digits joined by single hyphens; additionally reserve `auth`, `accounts`, `dashboard`, `billing`, `docs`, `help`, `cdn`, `assets`, and `files` to keep common service subdomains unavailable to workspaces (Stage 1).
-- Workspace logos are stored as nullable URL references, matching the design's “image URL/reference” without introducing uploads in Stage 1.
+- Stage 1 stored workspace logos as nullable URL references; Stage 3 changes the field to `ImageField` and stores new uploads in a separate public media directory as requested.
 - New accounts default to pending approval; the user manager marks teacher, assistant, and Platform Admin accounts approved on creation.
 - Exact dependencies are pinned to Django 6.0.8, DRF 3.17.2, drf-spectacular 0.30.0, psycopg 3.3.6, and django-environ 0.14.0 for the Python 3.14.4 environment and documented framework compatibility.
 - Password reset completion uses the staff set-password endpoint with the same `uid`, token, and new password shape; the design specifies no separate finish-reset route (Stage 2).
@@ -101,6 +105,9 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Invitation links target the workspace's `/teacher/set-password/` frontend route and carry `uid` and token as query parameters; the frontend submits them to the API (Stage 2).
 - Staff auth throttle rates are 5 login attempts/minute, 3 password-reset starts/hour, and 5 set-password attempts/hour per client IP; the design requires throttling but does not specify rates (Stage 2).
 - DRF throttling uses `SimpleRateThrottle.get_ident`; `DRF_NUM_PROXIES=0` ignores forwarded IP headers, and deployments set it to the known trusted proxy count. Email expiry is displayed as an upper-bound whole number of days so the text remains accurate for non-whole-day timeout values (Stage 2 hardening).
+- `Pillow==12.3.0` is pinned for Stage 3 image validation; this version was installed in and verified with the project's Python 3.14.4 virtual environment.
+- Logo uploads use `backend/public_media` with `/media/` routing enabled only in development; `PublicLogoStorage.url()` returns legacy absolute logo URLs unchanged so existing Stage 2 references remain readable.
+- Suspended public branding/profile requests return 404 with `Workspace is unavailable.`; the task required an unavailable response but did not specify its status/body. Logo PATCH requests use multipart form data for file uploads.
 
 ## 9. Deferred to later rounds
 
@@ -113,9 +120,13 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 
 ## 10. How to run
 
+The project virtual environment was verified with `..\.venv\Scripts\python.exe --version` from `backend/` (Python 3.14.4).
+
 From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`.
 
 Verify a stage: from `backend/` with the virtual environment active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
+
+Stage 3 verification from `backend/`: `..\.venv\Scripts\python.exe manage.py check`; `..\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run`; `..\.venv\Scripts\python.exe manage.py spectacular --validate`; `..\.venv\Scripts\python.exe manage.py test --noinput` (44 tests passed).
 
 ## 11. Known problems
 
