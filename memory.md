@@ -58,7 +58,7 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 |---|---|---|---|---|
 | 1 | Bootstrap, workspaces, accounts | merged (PR #1) | stage-1-fixes | - |
 | 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
-| 3 | Public showcase, workspace settings | done - awaiting review | stage-3-public-showcase | - |
+| 3 | Public showcase, workspace settings | merged (PR #5) | stage-3-public-showcase | - |
 | 4 | Student registration, login, approval | not started | - | - |
 | 5 | Courses, enrollment, manual payments | not started | - | - |
 | 6 | Content and assessment skeleton | not started | - | - |
