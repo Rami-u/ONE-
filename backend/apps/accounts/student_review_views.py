@@ -4,7 +4,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from .permissions import IsWorkspaceTeacher, WorkspaceSlugMixin
 from .services import review_student
@@ -22,7 +22,26 @@ class StudentListView(WorkspaceSlugMixin, APIView):
     permission_classes = [IsWorkspaceTeacher]
     serializer_class = StudentReviewSerializer
 
-    @extend_schema(responses=StudentReviewListSerializer)
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["pending", "approved", "rejected"],
+                description="Filter students by approval status.",
+            ),
+            OpenApiParameter(
+                name="page",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Page number of the paginated result.",
+            ),
+        ],
+        responses=StudentReviewListSerializer,
+    )
     def get(self, request, slug):
         queryset = User.objects.filter(
             workspace=self.workspace,
