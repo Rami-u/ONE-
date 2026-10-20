@@ -194,7 +194,11 @@ def _safe_email_exception_message(exc, *, token=None, link=None):
     for secret in (token, link):
         if secret:
             message = message.replace(secret, "[redacted]")
-    return message
+    return re.sub(
+        r"(?i)(token|password)=([^\s&]+)",
+        r"\1=[redacted]",
+        message,
+    )
 
 
 def _send_student_reset_email(user, uid, token):

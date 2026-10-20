@@ -97,6 +97,52 @@ class StudentAuthenticationTests(APITestCase):
         self.assertEqual(missing.status_code, 400)
         self.assertEqual(wrong_type.status_code, 400)
 
+    def test_student_post_bodies_reject_missing_and_wrong_typed_fields(self):
+        missing_login = self.client.post(self.login_url, {}, format="json")
+        wrong_login = self.client.post(
+            self.login_url, {"email": ["bad"], "password": "x"}, format="json"
+        )
+        missing_reset = self.client.post(self.reset_url, {}, format="json")
+        wrong_reset = self.client.post(self.reset_url, {"email": ["bad"]}, format="json")
+        missing_confirm = self.client.post(self.confirm_url, {}, format="json")
+        wrong_confirm = self.client.post(
+            self.confirm_url,
+            {"uid": ["bad"], "token": "bad", "new_password": "Reset-strong-password-456!"},
+            format="json",
+        )
+        self.assertTrue(
+            all(
+                response.status_code == 400
+                for response in (
+                    missing_login,
+                    wrong_login,
+                    missing_reset,
+                    wrong_reset,
+                    missing_confirm,
+                    wrong_confirm,
+                )
+            )
+        )
+
+    def test_full_registration_approval_login_me_logout_probe(self):
+        registered = self.register(email="flow@example.com")
+        self.assertEqual(registered.status_code, 201)
+        pending_login = self.login("flow@example.com", "Student-strong-password-123!")
+        self.assertEqual(pending_login.status_code, 403)
+        student = User.objects.get(email="flow@example.com", workspace=self.workspace)
+        teacher_client = APIClient()
+        teacher_client.force_authenticate(self.teacher)
+        with self.captureOnCommitCallbacks(execute=True):
+            approved = teacher_client.post(
+                f"/api/v1/workspaces/science/students/{student.pk}/approve/", {}, format="json"
+            )
+        self.assertEqual(approved.status_code, 200)
+        successful_login = self.login("flow@example.com", "Student-strong-password-123!")
+        self.assertEqual(successful_login.status_code, 200)
+        self.assertEqual(self.client.get(f"{self.base}me/").status_code, 200)
+        self.assertEqual(self.client.post(f"{self.base}logout/").status_code, 204)
+        self.assertEqual(self.client.get(f"{self.base}me/").status_code, 403)
+
     def test_login_success_returns_safe_me_payload_and_session(self):
         student = create_student(
             self.workspace,
@@ -178,11 +224,17 @@ class StudentAuthenticationTests(APITestCase):
         self.assertEqual(self.client.get(f"{self.base}me/").status_code, 403)
 
         teacher_client = APIClient()
-        teacher_client.force_authenticate(self.teacher)
+        teacher_login = teacher_client.post(
+            "/api/v1/workspaces/science/staff/auth/login/",
+            {"email": self.teacher.email, "password": "Teacher-strong-password-123!"},
+            format="json",
+        )
+        self.assertEqual(teacher_login.status_code, 200)
         teacher_me = teacher_client.get(f"{self.base}me/")
         self.assertEqual(teacher_me.status_code, 200)
         self.assertEqual(teacher_me.data["role"], User.Role.TEACHER)
         self.assertEqual(teacher_client.post(f"{self.base}logout/").status_code, 204)
+        self.assertEqual(teacher_client.get(f"{self.base}me/").status_code, 403)
 
     def test_csrf_endpoint_sets_cookie_and_returns_no_content(self):
         response = self.client.get(f"{self.base}csrf/")
@@ -286,7 +338,10 @@ class StudentAuthenticationTests(APITestCase):
         with self.assertLogs("apps.accounts.student_views", level="WARNING") as logs:
             with patch(
                 "apps.accounts.student_views.send_mail",
-                side_effect=OSError("mail transport unavailable"),
+                side_effect=OSError(
+                    "mail transport unavailable token=secret password=private "
+                    "https://unsafe.example/reset?token=secret"
+                ),
             ):
                 with self.captureOnCommitCallbacks(execute=True):
                     response = self.client.post(self.reset_url, {"email": student.email}, format="json")
@@ -295,8 +350,27 @@ class StudentAuthenticationTests(APITestCase):
         self.assertIn(f"user_id={student.pk}", joined)
         self.assertIn("OSError", joined)
         self.assertIn("mail transport unavailable", joined)
+        self.assertNotIn("secret", joined)
+        self.assertNotIn("private", joined)
         self.assertNotIn("?uid=", joined)
-        self.assertNotIn("token", joined.lower())
+        self.assertNotIn("token=secret", joined.lower())
+        self.assertNotIn("password=private", joined.lower())
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="127.0.0.1",
+        EMAIL_PORT=1,
+        EMAIL_USE_TLS=False,
+        EMAIL_HOST_USER="broken-user",
+        EMAIL_HOST_PASSWORD="broken-password",
+    )
+    def test_password_reset_with_broken_email_configuration_still_succeeds(self):
+        student = create_student(self.workspace)
+        with self.assertLogs("apps.accounts.student_views", level="WARNING"):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(self.reset_url, {"email": student.email}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"detail": "If the account exists, a reset link has been sent."})
 
     def test_unknown_and_suspended_workspace_contract_for_student_routes(self):
         routes = [
