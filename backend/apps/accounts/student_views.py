@@ -6,6 +6,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .permissions import WorkspaceSlugMixin
+from .views import ClientIPRateThrottle
+
+
+class StudentRegisterThrottle(ClientIPRateThrottle):
+    scope = "student_register"
+
+
+class StudentLoginThrottle(ClientIPRateThrottle):
+    scope = "student_login"
+
+
+class StudentPasswordResetThrottle(ClientIPRateThrottle):
+    scope = "student_password_reset"
+
+
+class StudentPasswordResetConfirmThrottle(ClientIPRateThrottle):
+    scope = "student_password_reset_confirm"
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")

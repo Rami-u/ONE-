@@ -97,6 +97,10 @@ REST_FRAMEWORK = {
         "staff_login": "5/minute",
         "staff_password_reset": "3/hour",
         "staff_set_password": "5/hour",
+        "student_register": "10/hour",
+        "student_login": "5/minute",
+        "student_password_reset": "3/hour",
+        "student_password_reset_confirm": "5/hour",
     },
     # Trust forwarded client IPs only when the deployment has configured its
     # exact number of trusted reverse proxies. Zero ignores X-Forwarded-For.
