@@ -1,4 +1,5 @@
 from io import BytesIO
+import os
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
@@ -26,9 +27,7 @@ def make_workspace(slug, *, listed=True, status=Workspace.Status.ACTIVE, name=No
     return workspace
 
 
-def image_upload(*, name="logo.png", image_format="PNG", size=None):
-    if size is not None:
-        return SimpleUploadedFile(name, b"x" * size, content_type="image/png")
+def image_upload(*, name="logo.png", image_format="PNG"):
     buffer = BytesIO()
     Image.new("RGB", (2, 2), "blue").save(buffer, format=image_format)
     return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
@@ -219,9 +218,33 @@ class PublicShowcaseTests(APITestCase):
             format="multipart",
         )
         self.assertEqual(invalid.status_code, 400)
-        oversized = self.client.patch(
-            url,
-            {"logo": image_upload(size=2 * 1024 * 1024 + 1)},
-            format="multipart",
+
+    def test_valid_logo_larger_than_two_megabytes_is_rejected(self):
+        teacher = self.listed.users.get(role=User.Role.TEACHER)
+        self.client.force_authenticate(teacher)
+        image_bytes = BytesIO()
+        image = Image.frombytes("RGB", (1200, 1200), os.urandom(1200 * 1200 * 3))
+        image.save(image_bytes, format="PNG")
+        content = image_bytes.getvalue()
+        self.assertGreater(len(content), 2 * 1024 * 1024)
+        with Image.open(BytesIO(content)) as decoded:
+            self.assertEqual(decoded.format, "PNG")
+            decoded.verify()
+
+        upload = SimpleUploadedFile("large.png", content, content_type="image/png")
+        response = self.client.patch(
+            "/api/v1/workspaces/listed/", {"logo": upload}, format="multipart"
         )
-        self.assertEqual(oversized.status_code, 400)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("2 MB", str(response.data["logo"]))
+
+    def test_non_image_named_png_is_rejected(self):
+        teacher = self.listed.users.get(role=User.Role.TEACHER)
+        self.client.force_authenticate(teacher)
+        fake_png = SimpleUploadedFile(
+            "logo.png", b"not an image", content_type="image/png"
+        )
+        response = self.client.patch(
+            "/api/v1/workspaces/listed/", {"logo": fake_png}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 400)
