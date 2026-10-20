@@ -74,6 +74,33 @@ Suspended workspaces return `403` with `Workspace is unavailable.` on branding, 
 
 In production, configure the web server to serve `/media/` from `backend/public_media`; Django serves these logos directly only in development.
 
+## Stage 4 student authentication and approval
+
+Student routes use the workspace slug in the URL:
+
+- `GET /api/v1/workspaces/{slug}/auth/csrf/` sets the CSRF cookie and returns `204`.
+- `POST /api/v1/workspaces/{slug}/auth/register/` creates a pending student without starting a session.
+- `POST /api/v1/workspaces/{slug}/auth/login/`, `logout/`, and `GET .../me/` use Django sessions. Only approved students can log in; `me` also supports the workspace teacher.
+- `POST .../password-reset/` starts a generic-response reset email, and `POST .../password-reset/confirm/` consumes its single-use token.
+- Teachers can list students at `GET /api/v1/workspaces/{slug}/students/` and approve or reject them at `POST .../{id}/approve/` and `POST .../{id}/reject/`.
+
+Registration, login, reset, and reset-confirm are throttled by client IP. Suspended workspaces return `403` with `Workspace is unavailable.` for these new routes. Rejected students remain in the database and cannot log in or register again with the same workspace email.
+
+### Trying session endpoints by hand
+
+These commands assume `cookies.txt` already contains a teacher session from the staff login endpoint. The CSRF request writes `csrftoken` into the same cookie jar; the approval request sends it back in `X-CSRFToken`.
+
+```powershell
+curl.exe -c cookies.txt -b cookies.txt http://127.0.0.1:8000/api/v1/workspaces/science/auth/csrf/
+$csrfLine = Get-Content .\cookies.txt | Where-Object { $_ -match '\scsrftoken\s' } | Select-Object -Last 1
+$csrfToken = ($csrfLine.Trim() -split '\s+')[-1]
+curl.exe -c cookies.txt -b cookies.txt -X POST `
+  -H "Content-Type: application/json" `
+  -H "X-CSRFToken: $csrfToken" `
+  --data '{}' `
+  http://127.0.0.1:8000/api/v1/workspaces/science/students/45/approve/
+```
+
 ### Troubleshooting
 
 #### `/api/docs/` shows Not Found

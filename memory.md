@@ -59,7 +59,7 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 | 1 | Bootstrap, workspaces, accounts | merged (PR #1) | stage-1-fixes | - |
 | 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
 | 3 | Public showcase, workspace settings | merged (PR #5) | stage-3-public-showcase | - |
-| 4 | Student registration, login, approval | not started | - | - |
+| 4 | Student registration, login, approval | done - awaiting review | stage-4-student-auth | - |
 | 5 | Courses, enrollment, manual payments | not started | - | - |
 | 6 | Content and assessment skeleton | not started | - | - |
 
@@ -70,7 +70,7 @@ Fill this in as apps are created. One row per app, kept to one line each.
 | App | Responsibility | Key models | Endpoints (prefix `/api/v1/`) | Stage |
 |---|---|---|---|---|
 | workspaces | Tenant configuration and identity; admin workspace lifecycle | `Workspace` | Admin workspace list/detail/suspend/activate (`admin/workspaces/`) | 2 |
-| accounts | Custom identity, teacher onboarding, and staff auth | `User` | Admin teacher management (`admin/teachers/`); staff auth (`workspaces/{slug}/staff/auth/`) | 2 |
+| accounts | Custom identity, teacher onboarding, staff and student auth, student review | `User` | Admin teacher management; staff/student auth; workspace students/review (`workspaces/{slug}/...`) | 2–4 |
 | public | Safe teacher directory, profiles, branding, and teacher workspace settings | `Workspace` (uses `User` for teacher display name) | Public teacher directory/profile; workspace branding/public-profile/settings | 3 |
 
 ## 7. Reusable building blocks
@@ -83,12 +83,16 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Workspace slug immutability | `backend/apps/workspaces/models.py` | Reject slug changes after creation |
 | User manager and login key derivation | `backend/apps/accounts/managers.py`, `backend/apps/accounts/models.py` | Create workspace accounts and Platform Admins; derive normalized login keys |
 | Teacher/workspace onboarding transaction and invitation mail | `backend/apps/accounts/services.py` | Atomically create teacher/workspace; send invitation after commit; resend/reset password links |
-| Platform Admin and active workspace checks | `backend/apps/accounts/permissions.py` | Protect platform admin routes and reject staff auth for missing/suspended workspaces |
+| Platform Admin, teacher, approved-student, and workspace-member permissions | `backend/apps/accounts/permissions.py` | Check role, approval state, workspace ownership, and active workspace status |
+| Workspace slug resolvers | `backend/apps/accounts/permissions.py` | `ActiveWorkspaceSlugMixin` keeps the Stage 2 suspended message; `WorkspaceSlugMixin` uses `Workspace is unavailable.` for public and Stage 4 routes |
 | Staff password token and API routes | `backend/apps/accounts/tokens.py`, `backend/apps/accounts/urls.py`, `backend/apps/accounts/views.py` | Expiring, single-use password tokens; teacher login and password setup/reset |
 | Shared login-key construction | `backend/apps/accounts/identity.py` | Build a normalized workspace-scoped login key consistently in model saves and staff login |
-| Client-IP throttling | `backend/apps/accounts/views.py`, `backend/config/settings.py`, `backend/.env.example` | Use DRF `get_ident` for all staff auth throttles; set trusted proxy count with `DRF_NUM_PROXIES` (default 0) |
+| Client-IP throttling | `backend/apps/accounts/views.py`, `backend/apps/accounts/student_views.py`, `backend/config/settings.py`, `backend/.env.example` | Reuse `ClientIPRateThrottle` for staff and student auth; set trusted proxy count with `DRF_NUM_PROXIES` (default 0) |
 | Environment-driven email delivery and token expiry | `backend/config/settings.py`, `backend/apps/accounts/services.py`, `backend/.env.example` | Configure console/SMTP delivery and `PASSWORD_RESET_TIMEOUT_SECONDS` (default 259200); email links state expiry in days |
-| Workspace URL resolver and role permission | `backend/apps/accounts/permissions.py`, extended by `backend/apps/public/views.py` and `backend/apps/public/permissions.py` | Resolve `view.workspace` from the URL slug, enforce active status, and restrict settings to its approved teacher |
+| Workspace teacher/student role permissions | `backend/apps/accounts/permissions.py` | `IsWorkspaceTeacher`, `IsApprovedStudent`, and `IsWorkspaceMember` enforce active workspace and tenant membership |
+| Student auth serializers and views | `backend/apps/accounts/student_serializers.py`, `backend/apps/accounts/student_views.py` | Safe registration, login, session, CSRF, `me`, and password reset API contracts |
+| Student review service and endpoints | `backend/apps/accounts/services.py`, `backend/apps/accounts/student_review_views.py` | Lock and scope a pending student, record reviewer and time, and notify after commit |
+| Account test helpers and Stage 4 coverage | `backend/apps/accounts/tests/helpers.py`, `backend/apps/accounts/tests/test_student_*.py` | Create workspace accounts; cover student auth, isolation, permissions, throttling, review, and schemas |
 | Safe public response serializers and logo validation/storage | `backend/apps/public/serializers.py`, `backend/apps/workspaces/image_validators.py`, `backend/apps/workspaces/storage.py` | Restrict showcase fields; validate public JPEG/PNG/WebP logos and store uploads separately from private media |
 | Public showcase endpoint tests | `backend/apps/public/tests/test_public_api.py` | Cover visibility, search, pagination, safe fields, workspace scoping, settings, and logo validation |
 
@@ -109,6 +113,12 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Logo uploads use `backend/public_media` with `/media/` routing enabled only in development; `PublicLogoStorage.url()` returns legacy absolute logo URLs unchanged so existing Stage 2 references remain readable.
 - Suspended branding, public-profile, and workspace settings requests return 403 with `Workspace is unavailable.`; unknown workspace slugs return 404 so the frontend can distinguish unavailable workspaces from missing ones. Logo PATCH requests use multipart form data for file uploads.
 - `COMPONENT_SPLIT_REQUEST=True` in `SPECTACULAR_SETTINGS` separates multipart logo upload schemas from JSON request schemas for accurate API documentation (Stage 3).
+- Student password-reset email uses subject `Reset your student password` and the existing upper-bound expiry wording; its body points to the workspace `/reset-password/` frontend route (Stage 4).
+- Student review notification subjects and plain-text bodies say whether the account was approved or rejected; rejection mail includes the saved reason because the design specifies notification content but not exact copy (Stage 4).
+- Duplicate student registration returns a field error on `email` with a workspace-specific duplicate message; the design specifies rejection and status but not the response wording (Stage 4).
+- Rejected student login uses the message `Your account was rejected.` and returns the saved `rejection_reason`; the design requires the state and reason but leaves the message text open (Stage 4).
+- Student auth serializers use the requested names `email`, `password`, `full_name`, and the safe `me` fields; review serializers use the listed student fields exactly, with no privileged additions (Stage 4).
+- Swagger UI uses drf-spectacular's documented string-valued `SWAGGER_UI_SETTINGS` to add `X-CSRFToken` from the same-host cookie for unsafe requests (Stage 4).
 
 ## 9. Deferred to later rounds
 
@@ -127,11 +137,13 @@ Verify a stage: from `backend/` with the virtual environment active, run `python
 
 Stage 3 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate`; `python manage.py test` (49 tests passed).
 
+Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (93 tests passed).
+
 ## 11. Known problems
 
 - Local development sets `DJANGO_SESSION_COOKIE_SECURE=False` in `backend/.env.example` for HTTP `runserver`; production must keep it `True`. If unset, the setting defaults to `True`.
 - The `/teacher/set-password/` invitation/reset destination is a frontend route; this backend stage supplies the API but does not build the frontend page.
-- Every later stage must add suspended-workspace checks to its permission classes. Suspension blocks later requests but does not revoke teacher sessions already issued.
+- Stage 5 and later permissions must check workspace status. Suspension blocks later requests but does not revoke sessions already issued.
 - Password-reset responses have the same body for known and unknown emails, but response time can still reveal account existence because email is sent in the request; move reset email delivery to a background task later.
 - Development serves logos only when `DEBUG=True`; production needs a web server mapping `/media/` to `backend/public_media`.
 - Replacing a workspace logo does not delete the old file, so orphan logo files accumulate; this is known and not fixed here.
