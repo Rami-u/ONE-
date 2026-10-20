@@ -70,7 +70,9 @@ Set `DJANGO_ENABLE_API_DOCS=True` to enable `GET /api/schema/` and `GET /api/doc
 - `GET /api/v1/workspaces/{slug}/public-profile/` returns the same safe profile for any active workspace, listed or unlisted. Courses are an empty list until Stage 5.
 - The authenticated teacher can `GET` and `PATCH /api/v1/workspaces/{slug}/` for workspace profile settings. The slug cannot be changed. Logo PATCH requests use multipart form data.
 
-Suspended workspaces are unavailable on branding and workspace public-profile routes. Public serializers do not include email addresses, passwords, or student counts.
+Suspended workspaces return `403` with `Workspace is unavailable.` on branding, workspace public-profile, and teacher workspace settings GET/PATCH routes; unknown slugs return `404` with `Workspace not found.`. The public teacher directory omits suspended workspaces and the public teacher profile returns `404`. Public serializers do not include email addresses, passwords, or student counts.
+
+In production, configure the web server to serve `/media/` from `backend/public_media`; Django serves these logos directly only in development.
 
 ### Troubleshooting
 

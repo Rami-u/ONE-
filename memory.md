@@ -105,9 +105,10 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Invitation links target the workspace's `/teacher/set-password/` frontend route and carry `uid` and token as query parameters; the frontend submits them to the API (Stage 2).
 - Staff auth throttle rates are 5 login attempts/minute, 3 password-reset starts/hour, and 5 set-password attempts/hour per client IP; the design requires throttling but does not specify rates (Stage 2).
 - DRF throttling uses `SimpleRateThrottle.get_ident`; `DRF_NUM_PROXIES=0` ignores forwarded IP headers, and deployments set it to the known trusted proxy count. Email expiry is displayed as an upper-bound whole number of days so the text remains accurate for non-whole-day timeout values (Stage 2 hardening).
-- `Pillow==12.3.0` is pinned for Stage 3 image validation; this version was installed in and verified with the project's Python 3.14.4 virtual environment.
+- `Pillow==12.3.0` is pinned for Stage 3 image validation and supports the project's Python 3.14 environment.
 - Logo uploads use `backend/public_media` with `/media/` routing enabled only in development; `PublicLogoStorage.url()` returns legacy absolute logo URLs unchanged so existing Stage 2 references remain readable.
-- Suspended public branding/profile requests return 404 with `Workspace is unavailable.`; the task required an unavailable response but did not specify its status/body. Logo PATCH requests use multipart form data for file uploads.
+- Suspended branding, public-profile, and workspace settings requests return 403 with `Workspace is unavailable.`; unknown workspace slugs return 404 so the frontend can distinguish unavailable workspaces from missing ones. Logo PATCH requests use multipart form data for file uploads.
+- `COMPONENT_SPLIT_REQUEST=True` in `SPECTACULAR_SETTINGS` separates multipart logo upload schemas from JSON request schemas for accurate API documentation (Stage 3).
 
 ## 9. Deferred to later rounds
 
@@ -120,13 +121,11 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 
 ## 10. How to run
 
-The project virtual environment was verified with `..\.venv\Scripts\python.exe --version` from `backend/` (Python 3.14.4).
-
 From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`.
 
 Verify a stage: from `backend/` with the virtual environment active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
 
-Stage 3 verification from `backend/`: `..\.venv\Scripts\python.exe manage.py check`; `..\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run`; `..\.venv\Scripts\python.exe manage.py spectacular --validate`; `..\.venv\Scripts\python.exe manage.py test --noinput` (44 tests passed).
+Stage 3 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate`; `python manage.py test` (49 tests passed).
 
 ## 11. Known problems
 
@@ -134,6 +133,9 @@ Stage 3 verification from `backend/`: `..\.venv\Scripts\python.exe manage.py che
 - The `/teacher/set-password/` invitation/reset destination is a frontend route; this backend stage supplies the API but does not build the frontend page.
 - Every later stage must add suspended-workspace checks to its permission classes. Suspension blocks later requests but does not revoke teacher sessions already issued.
 - Password-reset responses have the same body for known and unknown emails, but response time can still reveal account existence because email is sent in the request; move reset email delivery to a background task later.
+- Development serves logos only when `DEBUG=True`; production needs a web server mapping `/media/` to `backend/public_media`.
+- Replacing a workspace logo does not delete the old file, so orphan logo files accumulate; this is known and not fixed here.
+- `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
 
 ## 12. Production deployment checklist
 
@@ -158,3 +160,5 @@ Never set `SESSION_COOKIE_DOMAIN` (AGENTS.md section 7).
 Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment. It currently warns that `SECURE_SSL_REDIRECT` is not enabled, `SECURE_HSTS_SECONDS` is unset, and `CSRF_COOKIE_SECURE` is not enabled; record these as pre-deployment TODOs.
 
 `backend/requirements.txt` has no WSGI server or static-file package; deployment needs `collectstatic` and a web server for `/static/`.
+
+Map `/media/` to `backend/public_media` in the production web server.
