@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.test import override_settings
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -74,6 +75,19 @@ class StudentAuthenticationTests(APITestCase):
         teacher_response = self.register(email=self.teacher.email)
         self.assertEqual(response.status_code, 400)
         self.assertEqual(teacher_response.status_code, 400)
+
+    def test_login_key_integrity_race_returns_duplicate_email_error(self):
+        from unittest.mock import Mock
+
+        precheck = Mock()
+        precheck.exists.return_value = False
+        race_check = Mock()
+        race_check.exists.return_value = True
+        with patch.object(User.objects, "filter", side_effect=[precheck, race_check]):
+            with patch.object(User.objects, "create_user", side_effect=IntegrityError("unique login_key")):
+                response = self.register(email="race@example.com")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
 
     def test_same_email_can_register_in_another_workspace(self):
         other = create_workspace("other")
@@ -243,12 +257,14 @@ class StudentAuthenticationTests(APITestCase):
 
     def test_password_reset_response_is_same_for_student_unknown_and_teacher(self):
         student = create_student(self.workspace)
-        known = self.client.post(self.reset_url, {"email": student.email}, format="json")
-        unknown = self.client.post(self.reset_url, {"email": "unknown@example.com"}, format="json")
-        teacher = self.client.post(self.reset_url, {"email": self.teacher.email}, format="json")
+        with self.captureOnCommitCallbacks(execute=True):
+            known = self.client.post(self.reset_url, {"email": student.email}, format="json")
+            unknown = self.client.post(self.reset_url, {"email": "unknown@example.com"}, format="json")
+            teacher = self.client.post(self.reset_url, {"email": self.teacher.email}, format="json")
         self.assertEqual(known.status_code, 200)
         self.assertEqual(known.data, unknown.data)
         self.assertEqual(known.data, teacher.data)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_reset_email_is_sent_after_commit_with_configured_link(self):
         student = create_student(self.workspace)
@@ -303,7 +319,22 @@ class StudentAuthenticationTests(APITestCase):
         self.assertEqual(teacher.status_code, 400)
         self.assertEqual(weak.status_code, 400)
         self.assertEqual(foreign.data, teacher.data)
+        invalid_uid = self.client.post(
+            self.confirm_url,
+            {"uid": urlsafe_base64_encode(force_bytes(999999)), "token": "bad", "new_password": good_password},
+            format="json",
+        )
+        invalid_token = self.client.post(
+            self.confirm_url,
+            {"uid": uid_student, "token": "bad", "new_password": good_password},
+            format="json",
+        )
+        self.assertEqual(invalid_uid.status_code, 400)
+        self.assertEqual(invalid_token.status_code, 400)
+        self.assertEqual(invalid_uid.data, invalid_token.data)
+        self.assertEqual(invalid_uid.data, foreign.data)
 
+        cache.clear()
         with override_settings(PASSWORD_RESET_TIMEOUT=1):
             expired_student = create_student(self.workspace, email="expired@example.com")
             expired_uid = urlsafe_base64_encode(force_bytes(expired_student.pk))
@@ -332,6 +363,24 @@ class StudentAuthenticationTests(APITestCase):
         login_response = self.login(student.email, payload["new_password"])
         self.assertEqual(login_response.status_code, 403)
         self.assertEqual(login_response.data["code"], "pending_approval")
+
+        rejected = create_student(
+            self.workspace,
+            email="rejected-reset@example.com",
+            approval_status=User.ApprovalStatus.REJECTED,
+            rejection_reason="Not eligible",
+        )
+        rejected_payload = {
+            "uid": urlsafe_base64_encode(force_bytes(rejected.pk)),
+            "token": staff_password_token.make_token(rejected),
+            "new_password": "Reset-strong-password-456!",
+        }
+        self.assertEqual(self.client.post(self.confirm_url, rejected_payload, format="json").status_code, 200)
+        rejected.refresh_from_db()
+        self.assertEqual(rejected.approval_status, User.ApprovalStatus.REJECTED)
+        rejected_login = self.login(rejected.email, rejected_payload["new_password"])
+        self.assertEqual(rejected_login.status_code, 403)
+        self.assertEqual(rejected_login.data["code"], "account_rejected")
 
     def test_reset_email_failure_is_logged_and_request_succeeds(self):
         student = create_student(self.workspace)
