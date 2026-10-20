@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
@@ -48,6 +49,7 @@ class TeacherOnboardingTests(APITestCase):
         self.assertEqual(teacher.approval_status, User.ApprovalStatus.APPROVED)
         self.assertFalse(teacher.has_usable_password())
         self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("expires within 3 days", mail.outbox[0].body)
         self.assertIn(
             "https://science.edunova.com/teacher/set-password/", mail.outbox[0].body
         )
@@ -137,6 +139,7 @@ class TeacherOnboardingTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("set or reset", mail.outbox[0].body)
+        self.assertIn("expires within 3 days", mail.outbox[0].body)
 
     def test_resend_invitation_failure_returns_false(self):
         teacher, _, _ = create_teacher_with_workspace(
@@ -291,6 +294,52 @@ class StaffAuthenticationTests(APITestCase):
             )
         self.assertEqual(response.status_code, 429)
 
+    def test_forwarded_ip_does_not_bypass_throttle_when_num_proxies_is_zero(self):
+        cache.clear()
+        from apps.accounts.views import StaffLoginThrottle
+
+        rest_framework_settings = dict(settings.REST_FRAMEWORK)
+        rest_framework_settings["NUM_PROXIES"] = 0
+        with override_settings(REST_FRAMEWORK=rest_framework_settings):
+            with patch.object(StaffLoginThrottle, "rate", "1/minute", create=True):
+                first = self.client.post(
+                    self.login_url,
+                    {"email": "unknown@example.com", "password": "x"},
+                    format="json",
+                    HTTP_X_FORWARDED_FOR="198.51.100.10",
+                )
+                second = self.client.post(
+                    self.login_url,
+                    {"email": "unknown@example.com", "password": "x"},
+                    format="json",
+                    HTTP_X_FORWARDED_FOR="203.0.113.20",
+                )
+        self.assertEqual(first.status_code, 400)
+        self.assertEqual(second.status_code, 429)
+
+    def test_forwarded_client_ips_are_separate_when_one_proxy_is_configured(self):
+        cache.clear()
+        from apps.accounts.views import StaffLoginThrottle
+
+        rest_framework_settings = dict(settings.REST_FRAMEWORK)
+        rest_framework_settings["NUM_PROXIES"] = 1
+        with override_settings(REST_FRAMEWORK=rest_framework_settings):
+            with patch.object(StaffLoginThrottle, "rate", "1/minute", create=True):
+                first = self.client.post(
+                    self.login_url,
+                    {"email": "unknown@example.com", "password": "x"},
+                    format="json",
+                    HTTP_X_FORWARDED_FOR="198.51.100.10",
+                )
+                second = self.client.post(
+                    self.login_url,
+                    {"email": "unknown@example.com", "password": "x"},
+                    format="json",
+                    HTTP_X_FORWARDED_FOR="203.0.113.20",
+                )
+        self.assertEqual(first.status_code, 400)
+        self.assertEqual(second.status_code, 400)
+
     def test_logged_in_caller_is_also_throttled_by_client_ip(self):
         cache.clear()
         from apps.accounts.views import StaffLoginThrottle
@@ -341,6 +390,7 @@ class StaffAuthenticationTests(APITestCase):
         self.assertEqual(failed_delivery.status_code, 200)
         self.assertEqual(existing.data, unknown.data)
         self.assertEqual(existing.data, failed_delivery.data)
+        self.assertIn("expires within 3 days", mail.outbox[0].body)
         self.assertNotIn("token-secret", " ".join(logs.output))
         self.assertNotIn("https://unsafe.example", " ".join(logs.output))
 

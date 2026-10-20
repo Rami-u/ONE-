@@ -62,6 +62,28 @@ The local example disables the Secure cookie flag so browser sessions work over 
 
 Set `DJANGO_ENABLE_API_DOCS=True` to enable `GET /api/schema/` and `GET /api/docs/`. The example environment enables them for development. Set it to `False` to make both paths return 404.
 
+### Troubleshooting
+
+#### `/api/docs/` shows Not Found
+
+API documentation is disabled when `DJANGO_ENABLE_API_DOCS=False`. If `DJANGO_ENABLE_API_DOCS` is unset, it follows `DJANGO_DEBUG`: docs are disabled when `DJANGO_DEBUG=False` and enabled when `DJANGO_DEBUG=True`. Operating-system environment variables override values in `backend/.env`. In PowerShell, an environment variable remains set in that terminal tab after the server is restarted, so it can continue overriding `.env`.
+
+Check and remove a terminal-level debug override with:
+
+```powershell
+echo $env:DJANGO_DEBUG
+Remove-Item Env:DJANGO_DEBUG
+```
+
+If needed, check and remove a terminal-level docs override too:
+
+```powershell
+echo $env:DJANGO_ENABLE_API_DOCS
+Remove-Item Env:DJANGO_ENABLE_API_DOCS
+```
+
+Then set the desired values in `backend/.env` and restart `runserver`.
+
 ## Stage 2 teacher onboarding and authentication
 
 All Platform Admin API routes require an authenticated account with the `admin` role:
@@ -76,9 +98,9 @@ The staff authentication routes are workspace scoped:
 - `POST /api/v1/workspaces/{slug}/staff/auth/set-password/` accepts `uid`, `token`, and `new_password` from an invitation or reset link. The link opens the future frontend route `/teacher/set-password/`; that page must submit the values to this API.
 - `POST /api/v1/workspaces/{slug}/staff/auth/password-reset/` accepts the teacher's `email` and sends a reset link when the account exists.
 
-Invitation and reset links expire according to Django's `PASSWORD_RESET_TIMEOUT`. The set-password route also completes password resets because the design defines no separate reset-finish endpoint. Email delivery errors do not reveal whether an account exists; failed invites can be resent by an admin. Console email is selected by default with `DJANGO_DEBUG=True`; SMTP is the default with debug disabled.
+Invitation and reset links expire according to `PASSWORD_RESET_TIMEOUT_SECONDS` (default `259200`, or 3 days). The set-password route also completes password resets because the design defines no separate reset-finish endpoint. Email delivery errors do not reveal whether an account exists; failed invites can be resent by an admin. Console email is selected by default with `DJANGO_DEBUG=True`; SMTP is the default with debug disabled.
 
-Staff login, password-reset, and set-password requests are rate limited by the caller's IP, including requests made with an authenticated session.
+Staff login, password-reset, and set-password requests are rate limited by the caller's IP, including requests made with an authenticated session. `DRF_NUM_PROXIES` defaults to `0`, which ignores `X-Forwarded-For`; production deployments behind exactly one trusted reverse proxy must set it to `1`.
 
 ## Stage 1 models and rules
 
