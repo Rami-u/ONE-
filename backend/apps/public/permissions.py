@@ -1,10 +1,11 @@
 from rest_framework.permissions import AllowAny, BasePermission
 
 from apps.accounts.models import User
+from apps.workspaces.models import Workspace
 
 
-class PublicReadOnly(AllowAny):
-    """Explicitly allow unauthenticated requests to showcase endpoints."""
+class PublicAccess(AllowAny):
+    """Allow unauthenticated access with any HTTP method; views are read-only by implementing only GET."""
 
 
 class IsWorkspaceTeacher(BasePermission):
@@ -19,6 +20,6 @@ class IsWorkspaceTeacher(BasePermission):
             and user.role == User.Role.TEACHER
             and user.approval_status == User.ApprovalStatus.APPROVED
             and workspace is not None
-            and workspace.status == "active"
+            and workspace.status == Workspace.Status.ACTIVE
             and user.workspace_id == workspace.pk
         )

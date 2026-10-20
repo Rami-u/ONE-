@@ -8,7 +8,7 @@ from drf_spectacular.utils import extend_schema
 from apps.accounts.models import User
 from apps.accounts.permissions import ActiveWorkspaceSlugMixin
 from apps.workspaces.models import Workspace
-from .permissions import IsWorkspaceTeacher, PublicReadOnly
+from .permissions import IsWorkspaceTeacher, PublicAccess
 from .serializers import (
     PublicTeacherDirectorySerializer,
     PublicTeacherProfileSerializer,
@@ -27,7 +27,7 @@ def workspace_with_teacher_queryset():
 
 
 class PublicTeacherDirectoryView(generics.ListAPIView):
-    permission_classes = [PublicReadOnly]
+    permission_classes = [PublicAccess]
     serializer_class = PublicTeacherDirectorySerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "headline"]
@@ -41,7 +41,7 @@ class PublicTeacherDirectoryView(generics.ListAPIView):
 
 
 class PublicTeacherProfileView(generics.RetrieveAPIView):
-    permission_classes = [PublicReadOnly]
+    permission_classes = [PublicAccess]
     serializer_class = PublicTeacherProfileSerializer
     lookup_field = "slug"
 
@@ -58,7 +58,7 @@ class PublicWorkspaceSlugMixin(ActiveWorkspaceSlugMixin):
 
 
 class WorkspaceBrandingView(PublicWorkspaceSlugMixin, APIView):
-    permission_classes = [PublicReadOnly]
+    permission_classes = [PublicAccess]
     serializer_class = WorkspaceBrandingSerializer
 
     @extend_schema(responses=WorkspaceBrandingSerializer)
@@ -70,7 +70,7 @@ class WorkspaceBrandingView(PublicWorkspaceSlugMixin, APIView):
 
 
 class WorkspacePublicProfileView(PublicWorkspaceSlugMixin, APIView):
-    permission_classes = [PublicReadOnly]
+    permission_classes = [PublicAccess]
     serializer_class = PublicTeacherProfileSerializer
 
     @extend_schema(responses=PublicTeacherProfileSerializer)
