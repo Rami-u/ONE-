@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .student_review_views import StudentApproveView, StudentListView, StudentRejectView
 from .student_views import (
     StudentCSRFCookieView,
     StudentLoginView,
@@ -23,6 +24,9 @@ from .views import (
 )
 
 urlpatterns = [
+    path("workspaces/<slug:slug>/students/", StudentListView.as_view(), name="workspace-students"),
+    path("workspaces/<slug:slug>/students/<int:student_id>/approve/", StudentApproveView.as_view(), name="student-approve"),
+    path("workspaces/<slug:slug>/students/<int:student_id>/reject/", StudentRejectView.as_view(), name="student-reject"),
     path("workspaces/<slug:slug>/auth/csrf/", StudentCSRFCookieView.as_view(), name="student-csrf"),
     path("workspaces/<slug:slug>/auth/register/", StudentRegisterView.as_view(), name="student-register"),
     path("workspaces/<slug:slug>/auth/login/", StudentLoginView.as_view(), name="student-login"),

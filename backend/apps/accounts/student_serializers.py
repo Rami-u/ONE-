@@ -78,3 +78,34 @@ class StudentLoginStateErrorSerializer(serializers.Serializer):
     code = serializers.ChoiceField(choices=("pending_approval", "account_rejected"))
     message = serializers.CharField()
     rejection_reason = serializers.CharField(allow_null=True, required=False)
+
+
+class StudentReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "email",
+            "full_name",
+            "phone",
+            "approval_status",
+            "rejection_reason",
+            "reviewed_at",
+            "date_joined",
+        )
+        read_only_fields = fields
+
+
+class StudentRejectSerializer(serializers.Serializer):
+    rejection_reason = serializers.CharField(max_length=1000)
+
+
+class StudentReviewListSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = StudentReviewSerializer(many=True)
+
+
+class StudentReviewConflictSerializer(serializers.Serializer):
+    detail = serializers.CharField()
