@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .student_views import StudentCSRFCookieView
 from .views import (
     AdminTeacherDetailView,
     AdminTeacherListCreateView,
@@ -14,6 +15,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("workspaces/<slug:slug>/auth/csrf/", StudentCSRFCookieView.as_view(), name="student-csrf"),
     path("admin/teachers/", AdminTeacherListCreateView.as_view(), name="admin-teachers"),
     path("admin/teachers/<int:pk>/", AdminTeacherDetailView.as_view(), name="admin-teacher-detail"),
     path("admin/teachers/<int:pk>/resend-invite/", AdminTeacherResendInviteView.as_view(), name="admin-teacher-resend-invite"),
