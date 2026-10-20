@@ -1,5 +1,6 @@
 from django.db import models
-
+from .image_validators import validate_workspace_logo
+from .storage import public_logo_storage
 from .validators import validate_workspace_slug
 
 
@@ -13,7 +14,14 @@ class Workspace(models.Model):
         max_length=63, unique=True, validators=[validate_workspace_slug]
     )
     subdomain = models.CharField(max_length=255, unique=True, null=True, blank=True)
-    logo = models.URLField(max_length=500, null=True, blank=True)
+    logo = models.ImageField(
+        max_length=500,
+        upload_to="workspace_logos/",
+        storage=public_logo_storage,
+        validators=[validate_workspace_logo],
+        null=True,
+        blank=True,
+    )
     headline = models.CharField(max_length=200, null=True, blank=True)
     bio = models.TextField(null=True, blank=True)
     about = models.TextField(null=True, blank=True)

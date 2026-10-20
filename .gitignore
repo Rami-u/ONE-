@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 backend/.env
 backend/private_media/
+backend/public_media/
 backend/staticfiles/
 .vscode/
 tmp/

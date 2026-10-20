@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "apps.workspaces",
     "apps.accounts",
+    "apps.public",
 ]
 
 MIDDLEWARE = [
@@ -105,6 +106,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Educational Platform API",
     "DESCRIPTION": "Backend API for the educational platform.",
     "VERSION": "1.0.0",
+    "COMPONENT_SPLIT_REQUEST": True,
 }
 
 LANGUAGE_CODE = "en-us"
@@ -115,7 +117,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "private_media"
-MEDIA_URL = None
+MEDIA_URL = "/media/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 EMAIL_BACKEND = env(

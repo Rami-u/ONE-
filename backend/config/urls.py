@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.http import Http404
 from django.urls import include, path
+from django.conf.urls.static import static
 
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
@@ -19,6 +20,7 @@ def api_docs_when_enabled(view):
 
 urlpatterns = [path(settings.DJANGO_ADMIN_PATH, admin.site.urls)]
 urlpatterns += [path("api/v1/", include("apps.accounts.urls"))]
+urlpatterns += [path("api/v1/", include("apps.public.urls"))]
 urlpatterns += [
     path(
         "api/schema/",
@@ -31,3 +33,9 @@ urlpatterns += [
         name="swagger-ui",
     ),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(
+        settings.MEDIA_URL,
+        document_root=settings.BASE_DIR / "public_media",
+    )

@@ -1,4 +1,5 @@
 from rest_framework.permissions import BasePermission
+from rest_framework.exceptions import NotFound, PermissionDenied
 
 
 class IsPlatformAdmin(BasePermission):
@@ -16,9 +17,9 @@ class ActiveWorkspaceSlugMixin:
     """Resolve a workspace from the URL and make its active status available."""
 
     workspace = None
+    unavailable_message = "This workspace is suspended."
 
     def initial(self, request, *args, **kwargs):
-        from rest_framework.exceptions import NotFound, PermissionDenied
         from apps.workspaces.models import Workspace
 
         try:
@@ -26,5 +27,5 @@ class ActiveWorkspaceSlugMixin:
         except Workspace.DoesNotExist as exc:
             raise NotFound("Workspace not found.") from exc
         if self.workspace.status != Workspace.Status.ACTIVE:
-            raise PermissionDenied("This workspace is suspended.")
+            raise PermissionDenied(self.unavailable_message)
         super().initial(request, *args, **kwargs)

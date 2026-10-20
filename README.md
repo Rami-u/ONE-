@@ -1,6 +1,6 @@
 # Educational Platform Backend
 
-The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 2 adds Platform Admin teacher/workspace management and teacher invitation, login, and password setup/reset APIs.
+The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 3 adds public teacher showcase APIs and teacher workspace settings, including public logo uploads.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ python -m pip install -r backend\requirements.txt
 Copy-Item backend\.env.example backend\.env
 ```
 
-Edit `backend\.env` and set a private `DJANGO_SECRET_KEY` and your PostgreSQL password. The example sets `DJANGO_SESSION_COOKIE_SECURE=False` for local HTTP development. Keep it `True` in production. Development uses Django's console email backend. In production, set `DJANGO_DEBUG=False`, configure `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, and `DEFAULT_FROM_EMAIL`, and set `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend` (or omit `EMAIL_BACKEND` to use the SMTP default when debug is off). Private uploads (when added) will be stored under `backend\private_media`; that directory is not served directly.
+Edit `backend\.env` and set a private `DJANGO_SECRET_KEY` and your PostgreSQL password. The example sets `DJANGO_SESSION_COOKIE_SECURE=False` for local HTTP development. Keep it `True` in production. Development uses Django's console email backend. In production, set `DJANGO_DEBUG=False`, configure `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, and `DEFAULT_FROM_EMAIL`, and set `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend` (or omit `EMAIL_BACKEND` to use the SMTP default when debug is off). Workspace logos are JPEG, PNG, or WebP images up to 2 MB; development serves these from `backend\public_media` at `/media/`. Private uploads belong under `backend\private_media` and are not served directly.
 
 Create the PostgreSQL database and user if needed:
 
@@ -61,6 +61,18 @@ The local example disables the Secure cookie flag so browser sessions work over 
 ## API documentation
 
 Set `DJANGO_ENABLE_API_DOCS=True` to enable `GET /api/schema/` and `GET /api/docs/`. The example environment enables them for development. Set it to `False` to make both paths return 404.
+
+## Stage 3 public showcase and workspace settings
+
+- `GET /api/v1/public/teachers/` returns active, listed teacher workspaces with page-number pagination (20 per page) and `?search=` across workspace name and headline.
+- `GET /api/v1/public/teachers/{slug}/` returns a listed workspace's safe public profile.
+- `GET /api/v1/workspaces/{slug}/branding/` returns branding for any active workspace.
+- `GET /api/v1/workspaces/{slug}/public-profile/` returns the same safe profile for any active workspace, listed or unlisted. Courses are an empty list until Stage 5.
+- The authenticated teacher can `GET` and `PATCH /api/v1/workspaces/{slug}/` for workspace profile settings. The slug cannot be changed. Logo PATCH requests use multipart form data.
+
+Suspended workspaces return `403` with `Workspace is unavailable.` on branding, workspace public-profile, and teacher workspace settings GET/PATCH routes; unknown slugs return `404` with `Workspace not found.`. The public teacher directory omits suspended workspaces and the public teacher profile returns `404`. Public serializers do not include email addresses, passwords, or student counts.
+
+In production, configure the web server to serve `/media/` from `backend/public_media`; Django serves these logos directly only in development.
 
 ### Troubleshooting
 
