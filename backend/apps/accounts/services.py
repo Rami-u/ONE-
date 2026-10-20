@@ -18,13 +18,22 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-def _safe_email_exception_message(exc):
+def _safe_email_exception_message(exc, *, token=None, link=None):
     message = re.sub(r"https?://\S+", "[redacted link]", str(exc))
+    for secret in (token, link):
+        if secret:
+            message = message.replace(secret, "[redacted]")
     return re.sub(
         r"(?i)(token|password)=([^\s&]+)",
         r"\1=[redacted]",
         message,
     )
+
+
+def password_reset_expiry_sentence():
+    timeout_days = (settings.PASSWORD_RESET_TIMEOUT + 86_399) // 86_400
+    day_label = "day" if timeout_days == 1 else "days"
+    return f"It expires within {timeout_days} {day_label}"
 
 
 def password_link(user):
@@ -41,11 +50,9 @@ def password_link(user):
 
 def send_staff_password_email(user, subject="Set your teacher password"):
     link = password_link(user)
-    timeout_days = (settings.PASSWORD_RESET_TIMEOUT + 86_399) // 86_400
-    day_label = "day" if timeout_days == 1 else "days"
     send_mail(
         subject,
-        f"Use this link to set or reset your password. It expires within {timeout_days} {day_label}:\n\n{link}",
+        f"Use this link to set or reset your password. {password_reset_expiry_sentence()}:\n\n{link}",
         None,
         [user.email],
         fail_silently=False,

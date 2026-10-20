@@ -1,5 +1,4 @@
 import logging
-import re
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
@@ -20,6 +19,7 @@ from .identity import build_login_key
 from .models import User
 from .permissions import IsWorkspaceMember, WorkspaceSlugMixin
 from .serializers import MessageSerializer
+from .services import _safe_email_exception_message, password_reset_expiry_sentence
 from .student_serializers import (
     StudentLoginResponseSerializer,
     StudentLoginStateErrorSerializer,
@@ -188,26 +188,12 @@ def _student_reset_link(user, uid, token):
     )
 
 
-def _safe_email_exception_message(exc, *, token=None, link=None):
-    message = re.sub(r"https?://\S+", "[redacted link]", str(exc))
-    for secret in (token, link):
-        if secret:
-            message = message.replace(secret, "[redacted]")
-    return re.sub(
-        r"(?i)(token|password)=([^\s&]+)",
-        r"\1=[redacted]",
-        message,
-    )
-
-
 def _send_student_reset_email(user, uid, token):
     link = _student_reset_link(user, uid, token)
-    timeout_days = (settings.PASSWORD_RESET_TIMEOUT + 86_399) // 86_400
-    day_label = "day" if timeout_days == 1 else "days"
     try:
         send_mail(
             "Reset your student password",
-            f"Use this link to set or reset your password. It expires within {timeout_days} {day_label}:\n\n{link}",
+            f"Use this link to set or reset your password. {password_reset_expiry_sentence()}:\n\n{link}",
             None,
             [user.email],
             fail_silently=False,
