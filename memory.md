@@ -26,6 +26,7 @@ You update it at the end of every stage, in the same commit as the code (see AGE
 | `README.md` | How to run, test, add a feature | When setting up or finishing a stage |
 | `backend/.env.example` | Every environment variable | When touching settings |
 | `docs/review-checklist.md` | Checklist for the human reviewer of a stage | Only if the prompt names it |
+| `docs/open-questions.md` | Decisions the team has not made yet | Only if the prompt names it |
 
 ## 3. Design index: which section answers what
 
