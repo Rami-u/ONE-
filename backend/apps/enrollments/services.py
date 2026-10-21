@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import CourseEnrollment
@@ -28,12 +28,22 @@ def enroll_student_in_course(student, course, workspace):
         status = CourseEnrollment.Status.PENDING_PAYMENT
         activated_at = None
 
-    enrollment = CourseEnrollment.objects.create(
-        workspace=workspace,
-        student=student,
-        course=course,
-        status=status,
-        price_at_enrollment=course.price,
-        activated_at=activated_at,
-    )
-    return enrollment, True
+    try:
+        with transaction.atomic():
+            enrollment = CourseEnrollment.objects.create(
+                workspace=workspace,
+                student=student,
+                course=course,
+                status=status,
+                price_at_enrollment=course.price,
+                activated_at=activated_at,
+            )
+        return enrollment, True
+    except IntegrityError:
+        existing = (
+            CourseEnrollment.objects.filter(student=student, course=course)
+            .first()
+        )
+        if existing:
+            return existing, False
+        raise

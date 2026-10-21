@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.db import IntegrityError, transaction
 from rest_framework import status
@@ -227,3 +228,29 @@ class CourseEnrollmentApiTests(APITestCase):
         self.assertEqual(results[0]["course_id"], self.paid_course.id)
         self.assertEqual(results[0]["status"], "pending_payment")
         self.assertEqual(results[0]["price_at_enrollment"], "500.00")
+
+    def test_concurrent_enroll_returns_existing_enrollment_and_200(self):
+        self.client.force_login(self.student_a)
+        existing = create_enrollment(
+            self.workspace_a,
+            self.student_a,
+            self.paid_course,
+            status=CourseEnrollment.Status.PENDING_PAYMENT,
+            price="500.00",
+        )
+        with patch(
+            "apps.enrollments.services.CourseEnrollment.objects.select_for_update"
+        ) as mock_sfu:
+            mock_sfu.return_value.filter.return_value.first.return_value = None
+            response = self.client.post(
+                f"/api/v1/workspaces/alpha/courses/{self.paid_course.id}/enroll/"
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["enrollment_id"], existing.id)
+        self.assertEqual(
+            CourseEnrollment.objects.filter(
+                student=self.student_a, course=self.paid_course
+            ).count(),
+            1,
+        )
+

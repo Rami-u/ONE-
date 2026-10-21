@@ -1,6 +1,7 @@
 from decimal import Decimal
 from io import BytesIO
 import re
+from unittest.mock import patch
 
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -15,6 +16,7 @@ from apps.courses.tests.helpers import create_course
 from apps.enrollments.models import CourseEnrollment
 from apps.enrollments.tests.helpers import create_enrollment
 from apps.payments.models import PaymentSubmission
+from apps.payments.services import PaymentConflictError, submit_payment_claim
 from apps.payments.storage import private_receipt_storage
 from .helpers import (
     build_gif_bytes,
@@ -663,4 +665,49 @@ class PaymentApiTests(APITestCase):
             format="multipart",
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_concurrent_payment_claim_returns_409_conflict(self):
+        self.client.force_login(self.student_a1)
+        create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
+
+        with patch(
+            "apps.payments.services.PaymentSubmission.objects.select_for_update"
+        ) as mock_sfu:
+            mock_sfu.return_value.filter.return_value.exists.return_value = False
+            res = self.client.post(
+                f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+                data={"method": "transfer", "note": "Race claim attempt"},
+            )
+
+        self.assertEqual(res.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(
+            res.data["detail"],
+            "A payment claim is already submitted and pending review.",
+        )
+        self.assertEqual(
+            PaymentSubmission.objects.filter(
+                enrollment=self.enrollment_a1,
+                status=PaymentSubmission.Status.SUBMITTED,
+            ).count(),
+            1,
+        )
+
+    def test_submit_payment_claim_stale_in_memory_enrollment_raises_conflict(self):
+        self.enrollment_a1.status = CourseEnrollment.Status.ACTIVE
+        self.enrollment_a1.save()
+
+        stale_enrollment = CourseEnrollment.objects.get(pk=self.enrollment_a1.pk)
+        stale_enrollment.status = CourseEnrollment.Status.PENDING_PAYMENT
+
+        with self.assertRaises(PaymentConflictError) as ctx:
+            submit_payment_claim(
+                enrollment=stale_enrollment,
+                student=self.student_a1,
+                method="transfer",
+            )
+        self.assertEqual(
+            str(ctx.exception),
+            "Cannot submit payment for an enrollment that is active.",
+        )
+
 
