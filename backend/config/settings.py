@@ -115,7 +115,8 @@ SPECTACULAR_SETTINGS = {
       deepLinking: true,
       requestInterceptor: (request) => {
         const cookie = document.cookie.split('; ').find((item) => item.startsWith('csrftoken='));
-        if (cookie && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method.toUpperCase())) {
+        if (cookie && request.method &&
+            ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method.toUpperCase())) {
           request.headers = request.headers || {};
           request.headers['X-CSRFToken'] = decodeURIComponent(cookie.slice('csrftoken='.length));
           request.credentials = 'same-origin';
