@@ -33,6 +33,9 @@ INSTALLED_APPS = [
     "apps.workspaces",
     "apps.accounts",
     "apps.public",
+    "apps.courses",
+    "apps.enrollments",
+    "apps.payments",
 ]
 
 MIDDLEWARE = [
@@ -111,6 +114,12 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Backend API for the educational platform.",
     "VERSION": "1.0.0",
     "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {
+        "WorkspaceStatusEnum": "apps.workspaces.models.Workspace.Status",
+        "PaymentSubmissionStatusEnum": "apps.payments.models.PaymentSubmission.Status",
+        "PaymentMethodEnum": "apps.payments.models.PaymentSubmission.Method",
+        "EnrollmentStatusEnum": "apps.enrollments.models.CourseEnrollment.Status",
+    },
     "SWAGGER_UI_SETTINGS": """{
       deepLinking: true,
       requestInterceptor: (request) => {
