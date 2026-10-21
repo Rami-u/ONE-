@@ -16,7 +16,12 @@ from apps.enrollments.models import CourseEnrollment
 from apps.enrollments.tests.helpers import create_enrollment
 from apps.payments.models import PaymentSubmission
 from apps.payments.storage import private_receipt_storage
-from .helpers import create_payment
+from .helpers import (
+    build_gif_bytes,
+    build_pdf_bytes,
+    build_png_bytes,
+    create_payment,
+)
 
 
 def sample_image_file(name="receipt.png", fmt="PNG", size=(10, 10)):
@@ -559,3 +564,103 @@ class PaymentApiTests(APITestCase):
         self.assertEqual(receipt_res.status_code, status.HTTP_200_OK)
         self.assertEqual(receipt_res["X-Content-Type-Options"], "nosniff")
         self.assertEqual(receipt_res["Cache-Control"], "private, no-store")
+
+    def test_receipt_corrupted_crc_png_returns_400(self):
+        self.client.force_login(self.student_a1)
+        corrupted_png = SimpleUploadedFile(
+            "corrupt.png",
+            build_png_bytes(100, 100, corrupt_crc=True),
+            content_type="image/png",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": corrupted_png},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_receipt_header_only_png_20000x20000_returns_400(self):
+        self.client.force_login(self.student_a1)
+        huge_png = SimpleUploadedFile(
+            "huge.png",
+            build_png_bytes(20000, 20000, header_only=True),
+            content_type="image/png",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": huge_png},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_receipt_png_exactly_5000x5000_returns_201(self):
+        self.client.force_login(self.student_a1)
+        limit_png = SimpleUploadedFile(
+            "limit.png",
+            build_png_bytes(5000, 5000, header_only=False),
+            content_type="image/png",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": limit_png},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+    def test_receipt_png_5000x5001_returns_400(self):
+        self.client.force_login(self.student_a1)
+        oversized_dim_png = SimpleUploadedFile(
+            "oversized_dim.png",
+            build_png_bytes(5000, 5001, header_only=False),
+            content_type="image/png",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": oversized_dim_png},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Receipt image dimensions are too large.", str(res.data))
+
+    def test_receipt_gif_returns_400(self):
+        self.client.force_login(self.student_a1)
+        gif_file = SimpleUploadedFile(
+            "receipt.gif",
+            build_gif_bytes(),
+            content_type="image/gif",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": gif_file},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_receipt_pdf_exactly_5mb_returns_201(self):
+        self.client.force_login(self.student_a1)
+        pdf_5mb = SimpleUploadedFile(
+            "receipt_5mb.pdf",
+            build_pdf_bytes(5 * 1024 * 1024),
+            content_type="application/pdf",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": pdf_5mb},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+    def test_receipt_pdf_5mb_plus_one_byte_returns_400(self):
+        self.client.force_login(self.student_a1)
+        pdf_over = SimpleUploadedFile(
+            "receipt_over.pdf",
+            build_pdf_bytes(5 * 1024 * 1024 + 1),
+            content_type="application/pdf",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": pdf_over},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
