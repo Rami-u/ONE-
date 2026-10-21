@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 
 from apps.accounts.models import User
+from apps.courses.models import Course
 from apps.accounts.permissions import IsWorkspaceTeacher, WorkspaceSlugMixin
 from apps.workspaces.models import Workspace
 from .permissions import PublicAccess
@@ -22,7 +23,12 @@ def workspace_with_teacher_queryset():
         "id", "full_name", "workspace_id"
     )
     return Workspace.objects.prefetch_related(
-        Prefetch("users", queryset=teacher_users, to_attr="public_teachers")
+        Prefetch("users", queryset=teacher_users, to_attr="public_teachers"),
+        Prefetch(
+            "courses",
+            queryset=Course.objects.filter(is_published=True).order_by("-created_at", "id"),
+            to_attr="published_courses",
+        ),
     )
 
 

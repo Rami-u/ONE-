@@ -48,7 +48,10 @@ class PublicTeacherProfileSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(PublicCourseSerializer(many=True))
     def get_courses(self, workspace):
-        return []
+        courses = getattr(workspace, "published_courses", None)
+        if courses is None:
+            courses = workspace.courses.filter(is_published=True).order_by("-created_at", "id")
+        return PublicCourseSerializer(courses, many=True).data
 
 
 class WorkspaceBrandingSerializer(serializers.ModelSerializer):

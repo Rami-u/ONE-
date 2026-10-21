@@ -1,3 +1,4 @@
+from decimal import Decimal
 from io import BytesIO
 import os
 
@@ -6,6 +7,7 @@ from PIL import Image
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.courses.models import Course
 from apps.workspaces.models import Workspace
 
 
@@ -80,11 +82,29 @@ class PublicShowcaseTests(APITestCase):
         self.listed.about = "Long public description"
         self.listed.save(update_fields=["bio", "about"])
 
+        Course.objects.create(
+            workspace=self.listed,
+            title="Published Chemistry",
+            description="Intro to organic chemistry",
+            price=Decimal("199.99"),
+            is_published=True,
+        )
+        Course.objects.create(
+            workspace=self.listed,
+            title="Draft Chemistry",
+            description="Draft syllabus",
+            price=Decimal("50.00"),
+            is_published=False,
+        )
+
         response = self.client.get("/api/v1/public/teachers/listed/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["teacher_name"], "Teacher Listed")
         self.assertEqual(response.data["bio"], "Short public biography")
-        self.assertEqual(response.data["courses"], [])
+        self.assertEqual(len(response.data["courses"]), 1)
+        self.assertEqual(response.data["courses"][0]["title"], "Published Chemistry")
+        self.assertEqual(response.data["courses"][0]["description"], "Intro to organic chemistry")
+        self.assertEqual(response.data["courses"][0]["price"], "199.99")
         self.assert_no_private_fields(response.data)
         self.assertEqual(
             self.client.get("/api/v1/public/teachers/hidden/").status_code, 404
@@ -94,12 +114,20 @@ class PublicShowcaseTests(APITestCase):
         )
 
     def test_branding_and_workspace_public_profile_allow_active_unlisted(self):
+        Course.objects.create(
+            workspace=self.unlisted,
+            title="Unlisted Science Course",
+            price=Decimal("80.00"),
+            is_published=True,
+        )
         for endpoint in ("branding", "public-profile"):
             response = self.client.get(f"/api/v1/workspaces/hidden/{endpoint}/")
             self.assertEqual(response.status_code, 200)
             self.assert_no_private_fields(response.data)
         profile = self.client.get("/api/v1/workspaces/hidden/public-profile/")
-        self.assertEqual(profile.data["courses"], [])
+        self.assertEqual(len(profile.data["courses"]), 1)
+        self.assertEqual(profile.data["courses"][0]["title"], "Unlisted Science Course")
+        self.assertEqual(profile.data["courses"][0]["price"], "80.00")
         suspended_branding = self.client.get("/api/v1/workspaces/stopped/branding/")
         self.assertEqual(suspended_branding.status_code, 403)
         self.assertEqual(suspended_branding.data["detail"], "Workspace is unavailable.")
