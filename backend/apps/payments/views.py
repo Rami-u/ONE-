@@ -10,6 +10,7 @@ from apps.accounts.models import User
 from apps.accounts.permissions import IsApprovedStudent, IsWorkspaceTeacher, WorkspaceSlugMixin
 from apps.enrollments.models import CourseEnrollment
 from .models import PaymentSubmission
+from .permissions import CanViewReceiptPermission
 from .serializers import (
     PaymentClaimCreateSerializer,
     PaymentRejectSerializer,
@@ -97,7 +98,7 @@ class PaymentListView(WorkspaceSlugMixin, generics.ListAPIView):
 
 
 class PaymentReceiptView(WorkspaceSlugMixin, APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [CanViewReceiptPermission]
 
     @extend_schema(
         summary="View payment receipt",

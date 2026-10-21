@@ -9,6 +9,7 @@ from apps.accounts.models import User
 from apps.accounts.tests.helpers import create_student, create_teacher, create_workspace
 from apps.courses.tests.helpers import create_course
 from apps.enrollments.models import CourseEnrollment
+from apps.workspaces.models import Workspace
 from .helpers import create_enrollment
 
 
@@ -253,4 +254,28 @@ class CourseEnrollmentApiTests(APITestCase):
             ).count(),
             1,
         )
+
+    def test_pending_student_course_enroll_denied_403(self):
+        self.client.force_login(self.pending_student)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/courses/{self.paid_course.id}/enroll/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_rejected_student_course_enroll_denied_403(self):
+        self.client.force_login(self.rejected_student)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/courses/{self.paid_course.id}/enroll/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_suspended_workspace_course_enroll_denied_403(self):
+        self.workspace_a.status = Workspace.Status.SUSPENDED
+        self.workspace_a.save()
+        self.client.force_login(self.student_a)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/courses/{self.paid_course.id}/enroll/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
 

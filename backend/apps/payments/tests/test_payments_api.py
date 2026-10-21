@@ -16,8 +16,13 @@ from apps.courses.tests.helpers import create_course
 from apps.enrollments.models import CourseEnrollment
 from apps.enrollments.tests.helpers import create_enrollment
 from apps.payments.models import PaymentSubmission
-from apps.payments.services import PaymentConflictError, submit_payment_claim
+from apps.payments.services import (
+    PaymentConflictError,
+    confirm_payment,
+    submit_payment_claim,
+)
 from apps.payments.storage import private_receipt_storage
+from apps.workspaces.models import Workspace
 from .helpers import (
     build_gif_bytes,
     build_pdf_bytes,
@@ -113,6 +118,24 @@ class PaymentApiTests(APITestCase):
             self.course_a,
             status=CourseEnrollment.Status.PENDING_PAYMENT,
             price="150.00",
+        )
+        self.pending_student = create_student(
+            self.workspace_a,
+            email="pending-pay@example.com",
+            approval_status=User.ApprovalStatus.PENDING,
+        )
+        self.rejected_student = create_student(
+            self.workspace_a,
+            email="rejected-pay@example.com",
+            approval_status=User.ApprovalStatus.REJECTED,
+        )
+        self.course_b = create_course(self.workspace_b, price="200.00", is_published=True)
+        self.enrollment_b = create_enrollment(
+            self.workspace_b,
+            self.student_b,
+            self.course_b,
+            status=CourseEnrollment.Status.PENDING_PAYMENT,
+            price="200.00",
         )
 
     def test_student_submits_payment_claim_amount_derived_by_server(self):
@@ -709,5 +732,204 @@ class PaymentApiTests(APITestCase):
             str(ctx.exception),
             "Cannot submit payment for an enrollment that is active.",
         )
+
+    def test_teacher_a_confirm_payment_in_workspace_b_returns_404(self):
+        payment_b = create_payment(self.workspace_b, self.enrollment_b, self.student_b)
+        self.client.force_login(self.teacher_a)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment_b.id}/confirm/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+        payment_b.refresh_from_db()
+        self.assertEqual(payment_b.status, PaymentSubmission.Status.SUBMITTED)
+        self.assertIsNone(payment_b.reviewed_by)
+        self.enrollment_b.refresh_from_db()
+        self.assertEqual(self.enrollment_b.status, CourseEnrollment.Status.PENDING_PAYMENT)
+
+    def test_teacher_a_reject_payment_in_workspace_b_returns_404(self):
+        payment_b = create_payment(self.workspace_b, self.enrollment_b, self.student_b)
+        self.client.force_login(self.teacher_a)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment_b.id}/reject/",
+            data={"rejection_reason": "Cross workspace reject attempt"},
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+        payment_b.refresh_from_db()
+        self.assertEqual(payment_b.status, PaymentSubmission.Status.SUBMITTED)
+        self.assertIsNone(payment_b.reviewed_by)
+        self.enrollment_b.refresh_from_db()
+        self.assertEqual(self.enrollment_b.status, CourseEnrollment.Status.PENDING_PAYMENT)
+
+    def test_teacher_a_get_receipt_in_workspace_b_returns_404(self):
+        payment_b = create_payment(
+            self.workspace_b,
+            self.enrollment_b,
+            self.student_b,
+            receipt_image=sample_image_file("b.png"),
+        )
+        self.client.force_login(self.teacher_a)
+        res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{payment_b.id}/receipt/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_teacher_b_get_receipt_through_workspace_a_slug_returns_403(self):
+        payment_b = create_payment(
+            self.workspace_b,
+            self.enrollment_b,
+            self.student_b,
+            receipt_image=sample_image_file("b.png"),
+        )
+        self.client.force_login(self.teacher_b)
+        res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{payment_b.id}/receipt/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_confirm_payment_atomicity_rolls_back_on_failure(self):
+        payment = create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
+        with patch.object(
+            CourseEnrollment, "save", side_effect=RuntimeError("Simulated DB failure")
+        ):
+            with self.assertRaises(RuntimeError):
+                confirm_payment(
+                    payment_id=payment.id,
+                    workspace=self.workspace_a,
+                    reviewer=self.teacher_a,
+                )
+
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentSubmission.Status.SUBMITTED)
+        self.assertIsNone(payment.reviewed_by)
+        self.enrollment_a1.refresh_from_db()
+        self.assertEqual(
+            self.enrollment_a1.status, CourseEnrollment.Status.PENDING_PAYMENT
+        )
+
+    def test_confirm_already_rejected_payment_returns_409(self):
+        payment = create_payment(
+            self.workspace_a,
+            self.enrollment_a1,
+            self.student_a1,
+            status=PaymentSubmission.Status.REJECTED,
+            rejection_reason="Initial reject",
+        )
+        self.client.force_login(self.teacher_a)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/confirm/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(
+            res.data["detail"],
+            "Cannot confirm payment because it is already rejected.",
+        )
+
+    def test_reject_already_rejected_payment_returns_409(self):
+        payment = create_payment(
+            self.workspace_a,
+            self.enrollment_a1,
+            self.student_a1,
+            status=PaymentSubmission.Status.REJECTED,
+            rejection_reason="Initial reject",
+        )
+        self.client.force_login(self.teacher_a)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
+            data={"rejection_reason": "Second reject"},
+        )
+        self.assertEqual(res.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(
+            res.data["detail"],
+            "Cannot reject payment because it is already rejected.",
+        )
+
+    def test_pending_student_payment_claim_submit_denied_403(self):
+        self.client.force_login(self.pending_student)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer"},
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_rejected_student_payment_claim_submit_denied_403(self):
+        self.client.force_login(self.rejected_student)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer"},
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_pending_student_receipt_denied_403(self):
+        payment = create_payment(
+            self.workspace_a,
+            self.enrollment_a1,
+            self.student_a1,
+            receipt_image=sample_image_file("receipt.png"),
+        )
+        self.client.force_login(self.pending_student)
+        res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/receipt/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_rejected_student_receipt_denied_403(self):
+        payment = create_payment(
+            self.workspace_a,
+            self.enrollment_a1,
+            self.student_a1,
+            receipt_image=sample_image_file("receipt.png"),
+        )
+        self.client.force_login(self.rejected_student)
+        res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/receipt/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_suspended_workspace_payment_claim_submit_denied_403(self):
+        self.workspace_a.status = Workspace.Status.SUSPENDED
+        self.workspace_a.save()
+        self.client.force_login(self.student_a1)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer"},
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_suspended_workspace_receipt_denied_403(self):
+        payment = create_payment(
+            self.workspace_a,
+            self.enrollment_a1,
+            self.student_a1,
+            receipt_image=sample_image_file("receipt.png"),
+        )
+        self.workspace_a.status = Workspace.Status.SUSPENDED
+        self.workspace_a.save()
+        self.client.force_login(self.student_a1)
+        res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/receipt/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_suspended_workspace_payment_confirm_denied_403(self):
+        payment = create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
+        self.workspace_a.status = Workspace.Status.SUSPENDED
+        self.workspace_a.save()
+        self.client.force_login(self.teacher_a)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/confirm/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_suspended_workspace_payment_reject_denied_403(self):
+        payment = create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
+        self.workspace_a.status = Workspace.Status.SUSPENDED
+        self.workspace_a.save()
+        self.client.force_login(self.teacher_a)
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
+            data={"rejection_reason": "Suspended test"},
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
 
 

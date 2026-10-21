@@ -193,3 +193,24 @@ class CourseApiTests(APITestCase):
         response = self.client.get("/api/v1/workspaces/alpha/courses/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data["detail"], "Workspace is unavailable.")
+
+    def test_pending_student_courses_list_denied_403(self):
+        pending_student = create_student(
+            self.workspace_a,
+            email="pending-student-course@example.com",
+            approval_status=User.ApprovalStatus.PENDING,
+        )
+        self.client.force_login(pending_student)
+        response = self.client.get("/api/v1/workspaces/alpha/courses/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_rejected_student_courses_list_denied_403(self):
+        rejected_student = create_student(
+            self.workspace_a,
+            email="rejected-student-course@example.com",
+            approval_status=User.ApprovalStatus.REJECTED,
+        )
+        self.client.force_login(rejected_student)
+        response = self.client.get("/api/v1/workspaces/alpha/courses/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
