@@ -1,6 +1,8 @@
 from decimal import Decimal
 from io import BytesIO
+import re
 
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from PIL import Image
@@ -13,6 +15,7 @@ from apps.courses.tests.helpers import create_course
 from apps.enrollments.models import CourseEnrollment
 from apps.enrollments.tests.helpers import create_enrollment
 from apps.payments.models import PaymentSubmission
+from apps.payments.storage import private_receipt_storage
 from .helpers import create_payment
 
 
@@ -447,3 +450,112 @@ class PaymentApiTests(APITestCase):
             format="multipart",
         )
         self.assertEqual(res_oversized.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_receipt_pdf_with_html_name_stored_as_pdf_and_served_as_application_pdf(self):
+        self.client.force_login(self.student_a1)
+        pdf_html = SimpleUploadedFile(
+            "receipt.html",
+            b"%PDF-1.4 <script>alert('xss')</script>",
+            content_type="text/html",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": pdf_html},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        submission = PaymentSubmission.objects.get(pk=res.data["id"])
+        self.assertTrue(submission.receipt_image.name.endswith(".pdf"))
+        self.assertNotIn("html", submission.receipt_image.name)
+
+        # Retrieve receipt
+        receipt_res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{submission.id}/receipt/"
+        )
+        self.assertEqual(receipt_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(receipt_res["Content-Type"], "application/pdf")
+        self.assertEqual(receipt_res["Content-Disposition"], "inline")
+
+    def test_receipt_png_with_svg_name_stored_as_png_and_served_as_image_png(self):
+        self.client.force_login(self.student_a1)
+        png_svg = sample_image_file("x.svg", fmt="PNG")
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": png_svg},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        submission = PaymentSubmission.objects.get(pk=res.data["id"])
+        self.assertTrue(submission.receipt_image.name.endswith(".png"))
+        self.assertNotIn("svg", submission.receipt_image.name)
+
+        receipt_res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{submission.id}/receipt/"
+        )
+        self.assertEqual(receipt_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(receipt_res["Content-Type"], "image/png")
+        self.assertEqual(receipt_res["Content-Disposition"], "inline")
+
+    def test_receipt_jpeg_with_html_name_stored_as_jpg_and_served_as_image_jpeg(self):
+        self.client.force_login(self.student_a1)
+        jpeg_html = sample_image_file("x.html", fmt="JPEG")
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": jpeg_html},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        submission = PaymentSubmission.objects.get(pk=res.data["id"])
+        self.assertTrue(submission.receipt_image.name.endswith(".jpg"))
+        self.assertNotIn("html", submission.receipt_image.name)
+
+        receipt_res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{submission.id}/receipt/"
+        )
+        self.assertEqual(receipt_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(receipt_res["Content-Type"], "image/jpeg")
+        self.assertEqual(receipt_res["Content-Disposition"], "inline")
+
+    def test_receipt_path_traversal_name_stored_as_uuid_hex(self):
+        self.client.force_login(self.student_a1)
+        evil_file = sample_image_file("../../evil.png", fmt="PNG")
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": evil_file},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        submission = PaymentSubmission.objects.get(pk=res.data["id"])
+        self.assertRegex(submission.receipt_image.name, r"^receipts/[0-9a-f]{32}\.png$")
+
+    def test_receipt_legacy_old_html_served_as_octet_stream_attachment(self):
+        saved_file = private_receipt_storage.save("receipts/old.html", ContentFile(b"legacy receipt"))
+        payment = create_payment(
+            self.workspace_a,
+            self.enrollment_a1,
+            self.student_a1,
+            receipt_image=saved_file,
+        )
+        self.client.force_login(self.student_a1)
+        receipt_res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/receipt/"
+        )
+        self.assertEqual(receipt_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(receipt_res["Content-Type"], "application/octet-stream")
+        self.assertEqual(receipt_res["Content-Disposition"], "attachment")
+
+    def test_receipt_response_headers_nosniff_and_cache_control(self):
+        self.client.force_login(self.student_a1)
+        valid_png = sample_image_file("receipt.png", fmt="PNG")
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": valid_png},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        receipt_res = self.client.get(
+            f"/api/v1/workspaces/alpha/payments/{res.data['id']}/receipt/"
+        )
+        self.assertEqual(receipt_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(receipt_res["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(receipt_res["Cache-Control"], "private, no-store")

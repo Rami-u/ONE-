@@ -1,9 +1,12 @@
+import uuid
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.enrollments.models import CourseEnrollment
 from .models import PaymentSubmission
+from .validators import detect_receipt_type
 
 
 class PaymentConflictError(Exception):
@@ -30,6 +33,11 @@ def submit_payment_claim(enrollment, student, method, note=None, receipt_image=N
     )
     if has_open_claim:
         raise PaymentConflictError("A payment claim is already submitted and pending review.")
+
+    if receipt_image:
+        file_type = detect_receipt_type(receipt_image)
+        ext = "jpg" if file_type == "jpeg" else file_type
+        receipt_image.name = f"{uuid.uuid4().hex}.{ext}"
 
     submission = PaymentSubmission.objects.create(
         workspace=enrollment.workspace,

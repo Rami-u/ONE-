@@ -1,5 +1,3 @@
-import mimetypes
-
 from django.http import FileResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
@@ -143,11 +141,30 @@ class PaymentReceiptView(WorkspaceSlugMixin, APIView):
         except (FileNotFoundError, OSError) as exc:
             raise NotFound("Receipt file not found on disk.") from exc
 
-        content_type, _ = mimetypes.guess_type(payment.receipt_image.name)
-        if not content_type:
-            content_type = "application/octet-stream"
+        ext = (
+            payment.receipt_image.name.rsplit(".", 1)[-1].lower()
+            if "." in payment.receipt_image.name
+            else ""
+        )
+        content_type_map = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+        }
 
-        return FileResponse(file_handle, content_type=content_type)
+        if ext in content_type_map:
+            content_type = content_type_map[ext]
+            disposition = "inline"
+        else:
+            content_type = "application/octet-stream"
+            disposition = "attachment"
+
+        response = FileResponse(file_handle, content_type=content_type)
+        response["Content-Disposition"] = disposition
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 class PaymentConfirmView(WorkspaceSlugMixin, APIView):

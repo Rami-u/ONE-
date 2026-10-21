@@ -5,15 +5,12 @@ MAX_RECEIPT_SIZE = 5 * 1024 * 1024  # 5 MB
 ALLOWED_IMAGE_FORMATS = {"JPEG", "PNG"}
 
 
-def validate_receipt_file(file):
-    if file.size > MAX_RECEIPT_SIZE:
-        raise ValidationError("Receipt file size must not exceed 5 MB.")
-
+def detect_receipt_type(file):
     initial_pos = file.tell()
     header = file.read(5)
     file.seek(initial_pos)
     if header.startswith(b"%PDF-"):
-        return
+        return "pdf"
 
     try:
         image_file = Image.open(file)
@@ -25,5 +22,16 @@ def validate_receipt_file(file):
     finally:
         file.seek(initial_pos)
 
-    if fmt not in ALLOWED_IMAGE_FORMATS:
-        raise ValidationError("Receipt must be a valid JPEG, PNG, or PDF file.")
+    if fmt == "JPEG":
+        return "jpeg"
+    elif fmt == "PNG":
+        return "png"
+
+    raise ValidationError("Receipt must be a valid JPEG, PNG, or PDF file.")
+
+
+def validate_receipt_file(file):
+    if file.size > MAX_RECEIPT_SIZE:
+        raise ValidationError("Receipt file size must not exceed 5 MB.")
+
+    detect_receipt_type(file)
