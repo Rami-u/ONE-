@@ -10,6 +10,8 @@ class HasActiveEnrollment(BasePermission):
     """
     Permission requiring an active enrollment for students accessing course content.
     Teachers of the workspace are granted access to manage content.
+
+    Later content views must expose course_id in the URL or set view.course before permissions run.
     """
 
     def _resolve_course_id(self, view, obj=None):
@@ -21,10 +23,10 @@ class HasActiveEnrollment(BasePermission):
             if hasattr(obj, "course") and obj.course:
                 return obj.course.id
 
-        for key in ("course_id", "pk"):
-            val = view.kwargs.get(key)
-            if val is not None:
-                return val
+        view_kwargs = getattr(view, "kwargs", {}) or {}
+        val = view_kwargs.get("course_id")
+        if val is not None:
+            return val
 
         course = getattr(view, "course", None)
         if course is not None:
@@ -49,8 +51,7 @@ class HasActiveEnrollment(BasePermission):
 
         course_id = self._resolve_course_id(view)
         if course_id is None:
-            # Course ID not known until object check
-            return True
+            return False
 
         return CourseEnrollment.objects.filter(
             workspace=workspace,

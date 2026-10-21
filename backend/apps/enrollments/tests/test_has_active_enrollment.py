@@ -155,3 +155,39 @@ class HasActiveEnrollmentTests(TestCase):
         self.assertTrue(
             self.permission.has_object_permission(request, view, lesson_mock)
         )
+
+    def test_approved_student_without_enrollment_and_without_course_id_denied(self):
+        request, view = self._build_request_and_view(self.student, self.workspace)
+        self.assertFalse(self.permission.has_permission(request, view))
+
+    def test_student_with_active_enrollment_and_view_kwargs_pk_denied(self):
+        create_enrollment(
+            self.workspace,
+            self.student,
+            self.course,
+            status=CourseEnrollment.Status.ACTIVE,
+        )
+        request = self.factory.get("/fake-path/")
+        request.user = self.student
+        view = SimpleNamespace(
+            workspace=self.workspace,
+            kwargs={"pk": self.course.id},
+        )
+        self.assertFalse(self.permission.has_permission(request, view))
+
+    def test_teacher_without_course_id_allowed(self):
+        request, view = self._build_request_and_view(self.teacher, self.workspace)
+        self.assertTrue(self.permission.has_permission(request, view))
+
+    def test_student_with_active_enrollment_and_kwargs_course_id_allowed(self):
+        create_enrollment(
+            self.workspace,
+            self.student,
+            self.course,
+            status=CourseEnrollment.Status.ACTIVE,
+        )
+        request, view = self._build_request_and_view(
+            self.student, self.workspace, course_id=self.course.id
+        )
+        self.assertTrue(self.permission.has_permission(request, view))
+
