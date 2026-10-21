@@ -2,7 +2,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -47,15 +47,16 @@ class PaymentSubmissionModelTests(APITestCase):
         self.assertEqual(claim1.status, PaymentSubmission.Status.SUBMITTED)
 
         # Second submitted claim on same enrollment fails conditional unique constraint
-        with self.assertRaises(IntegrityError):
-            PaymentSubmission.objects.create(
-                workspace=workspace,
-                enrollment=enrollment,
-                submitted_by=student,
-                amount=enrollment.price_at_enrollment,
-                method=PaymentSubmission.Method.CASH,
-                status=PaymentSubmission.Status.SUBMITTED,
-            )
+        with transaction.atomic():
+            with self.assertRaises(IntegrityError):
+                PaymentSubmission.objects.create(
+                    workspace=workspace,
+                    enrollment=enrollment,
+                    submitted_by=student,
+                    amount=enrollment.price_at_enrollment,
+                    method=PaymentSubmission.Method.CASH,
+                    status=PaymentSubmission.Status.SUBMITTED,
+                )
 
         # After rejection, a new submitted claim is allowed
         claim1.status = PaymentSubmission.Status.REJECTED

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -28,13 +28,14 @@ class CourseEnrollmentModelTests(APITestCase):
         self.assertIsNone(enrollment.activated_at)
 
         # Unique constraint on student and course
-        with self.assertRaises(IntegrityError):
-            CourseEnrollment.objects.create(
-                workspace=workspace,
-                student=student,
-                course=course,
-                price_at_enrollment=course.price,
-            )
+        with transaction.atomic():
+            with self.assertRaises(IntegrityError):
+                CourseEnrollment.objects.create(
+                    workspace=workspace,
+                    student=student,
+                    course=course,
+                    price_at_enrollment=course.price,
+                )
 
 
 class CourseEnrollmentApiTests(APITestCase):
