@@ -157,7 +157,22 @@ The staff authentication routes are workspace scoped:
 
 Invitation and reset links expire according to `PASSWORD_RESET_TIMEOUT_SECONDS` (default `259200`, or 3 days). The set-password route also completes password resets because the design defines no separate reset-finish endpoint. Email delivery errors do not reveal whether an account exists; failed invites can be resent by an admin. Console email is selected by default with `DJANGO_DEBUG=True`; SMTP is the default with debug disabled.
 
-Staff login, password-reset, and set-password requests are rate limited by the caller's IP, including requests made with an authenticated session. `DRF_NUM_PROXIES` defaults to `0`, which ignores `X-Forwarded-For`; production deployments behind exactly one trusted reverse proxy must set it to `1`.
+Staff login, password-reset, and set-password requests are rate limited by the caller's IP, including requests made with an authenticated session. `DRF_NUM_PROXIES` defaults to `0`, which ignores `X-Forwarded-For`; production deployments behind exactly one trusted reverse proxy must set it to `1`. See [Production: shared cache for throttling](#production-shared-cache-for-throttling) for configuring shared counters across workers.
+
+### Production: shared cache for throttling
+
+DRF stores throttle counters in Django's default cache. For a multi-worker deployment, configure a shared cache so requests handled by different workers use the same counters. Django's database cache is available without adding a dependency:
+
+```python
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "throttle_cache",
+    }
+}
+```
+
+Create its table once with `python manage.py createcachetable`. Student throttles use this same default cache as staff throttles. A shared Redis cache is another option, but requires approval to add a dependency. Reverse-proxy rate limits on login routes complement DRF throttling; configure `DRF_NUM_PROXIES` to match the actual number of trusted proxies.
 
 ## Stage 1 models and rules
 

@@ -138,7 +138,7 @@ Verify a stage: from `backend/` with the virtual environment active, run `python
 
 Stage 3 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate`; `python manage.py test` (49 tests passed).
 
-Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (93 tests passed).
+Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (96 tests passed).
 
 ## 11. Known problems
 
@@ -149,6 +149,7 @@ Stage 4 verification from `backend/`: `python manage.py check`; `python manage.p
 - Development serves logos only when `DEBUG=True`; production needs a web server mapping `/media/` to `backend/public_media`.
 - Replacing a workspace logo does not delete the old file, so orphan logo files accumulate; this is known and not fixed here.
 - `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
+- Throttle counters are per-process until a shared cache is configured (see section 12).
 
 ## 12. Production deployment checklist
 
@@ -171,6 +172,8 @@ Set these in the server's `backend/.env`; never copy `.env.example` as-is. Varia
 Never set `SESSION_COOKIE_DOMAIN` (AGENTS.md section 7).
 
 Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment. It currently warns that `SECURE_SSL_REDIRECT` is not enabled, `SECURE_HSTS_SECONDS` is unset, and `CSRF_COOKIE_SECURE` is not enabled; record these as pre-deployment TODOs.
+
+Shared cache for throttling (pre-deployment TODO): the default cache is per process, so throttle limits multiply by the number of workers. The recommended fix is Django `DatabaseCache` with `python manage.py createcachetable`; Redis is an alternative and needs approval to add a dependency. A reverse-proxy limit on login routes complements DRF throttling but does not replace it; `DRF_NUM_PROXIES` must also be correct. See README's “Production: shared cache for throttling” subsection.
 
 `backend/requirements.txt` has no WSGI server or static-file package; deployment needs `collectstatic` and a web server for `/static/`.
 
