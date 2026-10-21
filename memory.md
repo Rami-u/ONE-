@@ -60,7 +60,7 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 | 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
 | 3 | Public showcase, workspace settings | merged (PR #5) | stage-3-public-showcase | - |
 | 4 | Student registration, login, approval | done - awaiting review | stage-4-student-auth | - |
-| 5 | Courses, enrollment, manual payments | not started | - | - |
+| 5 | Courses, enrollment, manual payments | done - awaiting review | stage-5-courses-payments | - |
 | 6 | Content and assessment skeleton | not started | - | - |
 
 ## 6. Repository map
@@ -72,6 +72,9 @@ Fill this in as apps are created. One row per app, kept to one line each.
 | workspaces | Tenant configuration and identity; admin workspace lifecycle | `Workspace` | Admin workspace list/detail/suspend/activate (`admin/workspaces/`) | 2 |
 | accounts | Custom identity, teacher onboarding, staff and student auth, student review | `User` | Admin teacher management; staff/student auth; workspace students/review (`workspaces/{slug}/...`) | 2–4 |
 | public | Safe teacher directory, profiles, branding, and teacher workspace settings | `Workspace` (uses `User` for teacher display name) | Public teacher directory/profile; workspace branding/public-profile/settings | 3 |
+| courses | Workspace course catalog, teacher course authoring, student list | `Course` | Workspace courses list/create/retrieve/update (`workspaces/{slug}/courses/`) | 5 |
+| enrollments | Course enrollment lifecycle, price snapshots, and content access | `CourseEnrollment` | Course enroll, my enrollments (`workspaces/{slug}/courses/.../enroll/`, `enrollments/me/`) | 5 |
+| payments | Manual payment claims, receipts, review, and enrollment activation | `PaymentSubmission` | Submit claim, list, view receipt, confirm, reject (`workspaces/{slug}/payments/`) | 5 |
 
 ## 7. Reusable building blocks
 
@@ -95,6 +98,10 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Account test helpers and Stage 4 coverage | `backend/apps/accounts/tests/helpers.py`, `backend/apps/accounts/tests/test_student_*.py` | Create workspace accounts; cover student auth, isolation, permissions, throttling, review, and schemas |
 | Safe public response serializers and logo validation/storage | `backend/apps/public/serializers.py`, `backend/apps/workspaces/image_validators.py`, `backend/apps/workspaces/storage.py` | Restrict showcase fields; validate public JPEG/PNG/WebP logos and store uploads separately from private media |
 | Public showcase endpoint tests | `backend/apps/public/tests/test_public_api.py` | Cover visibility, search, pagination, safe fields, workspace scoping, settings, and logo validation |
+| Active enrollment permission | `backend/apps/enrollments/permissions.py` | `HasActiveEnrollment` verifies active student course enrollment before granting course content access |
+| Course enrollment and payment services | `backend/apps/enrollments/services.py`, `backend/apps/payments/services.py` | Idempotent student course enrollment; atomic payment claim submission, review, and enrollment activation |
+| Private receipt storage and file validator | `backend/apps/payments/storage.py`, `backend/apps/payments/validators.py` | Store receipts privately with no public URL; validate JPEG/PNG/PDF files up to 5 MB |
+| Course, enrollment, payment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/enrollments/tests/helpers.py`, `backend/apps/payments/tests/helpers.py` | Create courses, enrollments, and payment submissions for test suites |
 
 ## 8. Decisions the design did not cover
 
@@ -121,6 +128,10 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - phone is optional at registration; design 5.2 defines the field, 8.1 does not show it (Stage 4).
 - Swagger UI uses drf-spectacular's documented string-valued `SWAGGER_UI_SETTINGS` to add `X-CSRFToken` from the same-host cookie for unsafe requests (Stage 4).
 - The Swagger UI request interceptor guards `request.method` because it also runs for the schema request; without the guard `/api/docs/` failed to load in the browser (Stage 4, commit d2bc620).
+- `ENUM_NAME_OVERRIDES` in `SPECTACULAR_SETTINGS` resolves OpenAPI enum naming collisions for `status` across Workspace, CourseEnrollment, and PaymentSubmission without warnings (Stage 5).
+- In-progress payment claims return 409 Conflict when submitting a second claim for the same enrollment or when reviewing an already-reviewed claim; the design specifies state verification but leaves the HTTP error code open (Stage 5).
+- Course enrollment endpoint returns 201 Created on initial enrollment and 200 OK on duplicate enrollment with existing enrollment details (Stage 5).
+- Authorized receipt retrieval streams the private file using `FileResponse` and detected mime type, with public URL routing blocked (Stage 5).
 
 ## 9. Deferred to later rounds
 
@@ -140,6 +151,8 @@ Verify a stage: from `backend/` with the virtual environment active, run `python
 Stage 3 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate`; `python manage.py test` (49 tests passed).
 
 Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (96 tests passed).
+
+Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (150 tests passed).
 
 ## 11. Known problems
 

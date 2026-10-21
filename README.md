@@ -1,6 +1,6 @@
 # Educational Platform Backend
 
-The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 3 adds public teacher showcase APIs and teacher workspace settings, including public logo uploads.
+The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 5 adds courses, course enrollments, manual payment submissions, receipt verification, and real published course showcases.
 
 ## Requirements
 
@@ -73,6 +73,22 @@ Set `DJANGO_ENABLE_API_DOCS=True` to enable `GET /api/schema/` and `GET /api/doc
 Suspended workspaces return `403` with `Workspace is unavailable.` on branding, workspace public-profile, and teacher workspace settings GET/PATCH routes; unknown slugs return `404` with `Workspace not found.`. The public teacher directory omits suspended workspaces and the public teacher profile returns `404`. Public serializers do not include email addresses, passwords, or student counts.
 
 In production, configure the web server to serve `/media/` from `backend/public_media`; Django serves these logos directly only in development.
+
+## Stage 5 courses, enrollment, and manual payments
+
+- `GET /api/v1/workspaces/{slug}/courses/` lists courses. Approved students see only published courses with their own `enrollment_status`; teachers see all courses.
+- `POST /api/v1/workspaces/{slug}/courses/` creates a course (workspace teacher only). The workspace is set from the URL slug.
+- `GET /api/v1/workspaces/{slug}/courses/{id}/` retrieves a course (teachers see any; students see only published courses in their workspace).
+- `PATCH /api/v1/workspaces/{slug}/courses/{id}/` updates a course (teacher only).
+- `POST /api/v1/workspaces/{slug}/courses/{id}/enroll/` enrolls an approved student. Free courses become `active` immediately; paid courses become `pending_payment`. Enrolling twice returns the existing enrollment. Response includes `payment_instructions`.
+- `GET /api/v1/workspaces/{slug}/enrollments/me/` returns the student's enrollments and statuses.
+- `POST /api/v1/workspaces/{slug}/enrollments/{id}/payments/` submits a manual payment claim (multipart, optional receipt; amount copied from `price_at_enrollment`, never from the client). Only one `submitted` claim allowed per enrollment; resubmission allowed after rejection.
+- `GET /api/v1/workspaces/{slug}/payments/` lists payments for the workspace teacher (filterable by `?status=`).
+- `GET /api/v1/workspaces/{slug}/payments/{id}/receipt/` serves private payment receipts only to the workspace teacher or owning student.
+- `POST /api/v1/workspaces/{slug}/payments/{id}/confirm/` confirms a submitted claim and activates the enrollment in the same transaction.
+- `POST /api/v1/workspaces/{slug}/payments/{id}/reject/` rejects a claim with a reason; enrollment stays `pending_payment`.
+- Receipts are validated for type (JPEG, PNG, PDF) and size (at most 5 MB), stored privately in `backend/private_media/receipts`, and never served through a public URL.
+- Public showcases (`GET /api/v1/public/teachers/{slug}/` and `GET /api/v1/workspaces/{slug}/public-profile/`) now return real published courses.
 
 ## Stage 4 student authentication and approval
 
