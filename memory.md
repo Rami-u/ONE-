@@ -100,6 +100,7 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Public showcase endpoint tests | `backend/apps/public/tests/test_public_api.py` | Cover visibility, search, pagination, safe fields, workspace scoping, settings, and logo validation |
 | Active enrollment permission | `backend/apps/enrollments/permissions.py` | `HasActiveEnrollment` verifies active student course enrollment before granting course content access |
 | Course enrollment and payment services | `backend/apps/enrollments/services.py`, `backend/apps/payments/services.py` | Idempotent student course enrollment; atomic payment claim submission, review, and enrollment activation |
+| Receipt access permission | `backend/apps/payments/permissions.py` | `CanViewReceiptPermission` enforces workspace membership and active status for receipt downloads |
 | Private receipt storage and file validator | `backend/apps/payments/storage.py`, `backend/apps/payments/validators.py` | Store receipts privately with no public URL; validate JPEG/PNG/PDF files up to 5 MB |
 | Course, enrollment, payment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/enrollments/tests/helpers.py`, `backend/apps/payments/tests/helpers.py` | Create courses, enrollments, and payment submissions for test suites |
 
@@ -131,7 +132,11 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - `ENUM_NAME_OVERRIDES` in `SPECTACULAR_SETTINGS` resolves OpenAPI enum naming collisions for `status` across Workspace, CourseEnrollment, and PaymentSubmission without warnings (Stage 5).
 - In-progress payment claims return 409 Conflict when submitting a second claim for the same enrollment or when reviewing an already-reviewed claim; the design specifies state verification but leaves the HTTP error code open (Stage 5).
 - Course enrollment endpoint returns 201 Created on initial enrollment and 200 OK on duplicate enrollment with existing enrollment details (Stage 5).
-- Authorized receipt retrieval streams the private file using `FileResponse` and detected mime type, with public URL routing blocked (Stage 5).
+- Authorized receipt retrieval stores uploaded files as <uuid4 hex>.<ext> and serves them via FileResponse with Content-Type mapped from the stored extension (pdf, jpg, jpeg, png inline; fallback application/octet-stream attachment), nosniff, and private, no-store Cache-Control (Stage 5).
+- Receipt file storage strips client filenames to <uuid4 hex>.<ext> based on content detection and serves fixed MIME types to prevent content spoofing and path traversal (Stage 5 repair).
+- Receipt validation catches Pillow SyntaxError, EOFError, DecompressionBombError, and enforces MAX_RECEIPT_PIXELS=25M before verify() so malicious/corrupt images return 400 instead of 500 (Stage 5 repair).
+- Course enrollment and payment claim submission handle concurrent race conditions by locking rows and catching database IntegrityError inside savepoints to return 200/409 instead of 500 (Stage 5 repair).
+- HasActiveEnrollment fails closed by returning False when a student's course_id cannot be resolved and removes the pk fallback so unassociated requests cannot bypass content authorization (Stage 5 repair).
 
 ## 9. Deferred to later rounds
 
@@ -152,7 +157,7 @@ Stage 3 verification from `backend/`: `python manage.py check`; `python manage.p
 
 Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (96 tests passed).
 
-Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (150 tests passed).
+Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (198 tests passed).
 
 ## 11. Known problems
 
@@ -185,10 +190,7 @@ Set these in the server's `backend/.env`; never copy `.env.example` as-is. Varia
 
 Never set `SESSION_COOKIE_DOMAIN` (AGENTS.md section 7).
 
-Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment. It currently warns that `SECURE_SSL_REDIRECT` is not enabled, `SECURE_HSTS_SECONDS` is unset, and `CSRF_COOKIE_SECURE` is not enabled; record these as pre-deployment TODOs.
-
-Shared cache for throttling (pre-deployment TODO): the default cache is per process, so throttle limits multiply by the number of workers. The recommended fix is Django `DatabaseCache` with `python manage.py createcachetable`; Redis is an alternative and needs approval to add a dependency. A reverse-proxy limit on login routes complements DRF throttling but does not replace it; `DRF_NUM_PROXIES` must also be correct. See README's “Production: shared cache for throttling” subsection.
-
-`backend/requirements.txt` has no WSGI server or static-file package; deployment needs `collectstatic` and a web server for `/static/`.
-
-Map `/media/` to `backend/public_media` in the production web server.
+Pre-deployment checklist and TODOs:
+- Run `DJANGO_DEBUG=False ... python manage.py check --deploy`. Enable `SECURE_SSL_REDIRECT`, set `SECURE_HSTS_SECONDS`, and enable `CSRF_COOKIE_SECURE`.
+- Shared cache for throttling: default cache is per process; use Django `DatabaseCache` with `createcachetable` or Redis. Configure `DRF_NUM_PROXIES` for reverse-proxy rate limiting.
+- WSGI & static files: `backend/requirements.txt` needs a WSGI server (e.g. gunicorn) and `collectstatic` for `/static/`. Web server maps `/media/` to `backend/public_media`.
