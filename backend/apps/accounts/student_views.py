@@ -19,7 +19,7 @@ from .identity import build_login_key
 from .models import User
 from .permissions import IsWorkspaceMember, WorkspaceSlugMixin
 from .serializers import MessageSerializer
-from .services import _safe_email_exception_message, password_reset_expiry_sentence
+from .services import password_reset_expiry_sentence, safe_email_exception_message
 from .student_serializers import (
     StudentLoginResponseSerializer,
     StudentLoginStateErrorSerializer,
@@ -217,7 +217,7 @@ def _send_student_reset_email(user, uid, token):
             "Student password reset email failed user_id=%s exception_class=%s exception_message=%s",
             user.pk,
             type(exc).__name__,
-            _safe_email_exception_message(exc, token=token, link=link),
+            safe_email_exception_message(exc, token=token, link=link),
         )
 
 

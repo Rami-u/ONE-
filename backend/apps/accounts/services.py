@@ -18,7 +18,7 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-def _safe_email_exception_message(exc, *, token=None, link=None):
+def safe_email_exception_message(exc, *, token=None, link=None):
     message = re.sub(r"https?://\S+", "[redacted link]", str(exc))
     for secret in (token, link):
         if secret:
@@ -168,7 +168,7 @@ def review_student(*, student_id, workspace, reviewer, approval_status, rejectio
                     "Student review email failed user_id=%s exception_class=%s exception_message=%s",
                     student.pk,
                     type(exc).__name__,
-                    _safe_email_exception_message(exc),
+                    safe_email_exception_message(exc),
                 )
 
         transaction.on_commit(send_notification)
