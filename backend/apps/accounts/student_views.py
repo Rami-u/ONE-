@@ -93,6 +93,7 @@ class StudentRegisterView(WorkspaceSlugMixin, APIView):
                     email=email,
                     password=serializer.validated_data["password"],
                     full_name=serializer.validated_data["full_name"],
+                    phone=serializer.validated_data.get("phone"),
                     workspace=self.workspace,
                     role=User.Role.STUDENT,
                     approval_status=User.ApprovalStatus.PENDING,

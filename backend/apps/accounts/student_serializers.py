@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
@@ -11,9 +13,27 @@ class StudentRegisterSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=254)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     full_name = serializers.CharField(max_length=150)
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=30,
+    )
 
     def validate_email(self, value):
         return User.objects.normalize_email_address(value)
+
+    def validate_phone(self, value):
+        if value is None or not value.strip():
+            return None
+        if not re.fullmatch(r"\+?[0-9 ()-]+", value):
+            raise serializers.ValidationError("Enter a valid contact number.")
+        digit_count = sum(character.isdigit() for character in value)
+        if not 6 <= digit_count <= 15:
+            raise serializers.ValidationError(
+                "Enter a phone number with between 6 and 15 digits."
+            )
+        return value
 
     def validate_password(self, value):
         user = User(email=self.initial_data.get("email", ""), full_name=self.initial_data.get("full_name", ""))
@@ -44,7 +64,15 @@ class StudentMeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "email", "full_name", "role", "approval_status", "workspace")
+        fields = (
+            "id",
+            "email",
+            "full_name",
+            "phone",
+            "role",
+            "approval_status",
+            "workspace",
+        )
         read_only_fields = fields
 
 

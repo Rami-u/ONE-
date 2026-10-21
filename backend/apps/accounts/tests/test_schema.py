@@ -83,14 +83,25 @@ class SchemaEndpointTests(APITestCase):
         register = paths["/api/v1/workspaces/{slug}/auth/register/"]["post"]
         register_request = register["requestBody"]["content"]["application/json"]["schema"]
         register_request = schema["components"]["schemas"][register_request["$ref"].rsplit("/", 1)[-1]]
-        self.assertEqual(set(register_request["properties"]), {"email", "password", "full_name"})
+        self.assertEqual(
+            set(register_request["properties"]),
+            {"email", "password", "full_name", "phone"},
+        )
 
         me = paths["/api/v1/workspaces/{slug}/auth/me/"]["get"]
         me_response = me["responses"]["200"]["content"]["application/json"]["schema"]
         me_response = schema["components"]["schemas"][me_response["$ref"].rsplit("/", 1)[-1]]
         self.assertEqual(
             set(me_response["properties"]),
-            {"id", "email", "full_name", "role", "approval_status", "workspace"},
+            {
+                "id",
+                "email",
+                "full_name",
+                "phone",
+                "role",
+                "approval_status",
+                "workspace",
+            },
         )
 
         approve = paths["/api/v1/workspaces/{slug}/students/{student_id}/approve/"]["post"]

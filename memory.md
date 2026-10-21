@@ -118,6 +118,7 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Duplicate student registration returns a field error on `email` with a workspace-specific duplicate message; the design specifies rejection and status but not the response wording (Stage 4).
 - Rejected student login uses the message `Your account was rejected.` and returns the saved `rejection_reason`; the design requires the state and reason but leaves the message text open (Stage 4).
 - Student auth serializers use the requested names `email`, `password`, `full_name`, and the safe `me` fields; review serializers use the listed student fields exactly, with no privileged additions (Stage 4).
+- phone is optional at registration; design 5.2 defines the field, 8.1 does not show it (Stage 4).
 - Swagger UI uses drf-spectacular's documented string-valued `SWAGGER_UI_SETTINGS` to add `X-CSRFToken` from the same-host cookie for unsafe requests (Stage 4).
 
 ## 9. Deferred to later rounds

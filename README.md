@@ -79,7 +79,7 @@ In production, configure the web server to serve `/media/` from `backend/public_
 Student routes use the workspace slug in the URL:
 
 - `GET /api/v1/workspaces/{slug}/auth/csrf/` sets the CSRF cookie and returns `204`.
-- `POST /api/v1/workspaces/{slug}/auth/register/` creates a pending student without starting a session.
+- `POST /api/v1/workspaces/{slug}/auth/register/` creates a pending student without starting a session; phone is optional at registration.
 - `POST /api/v1/workspaces/{slug}/auth/login/`, `logout/`, and `GET .../me/` use Django sessions. Only approved students can log in; `me` also supports the workspace teacher.
 - `POST .../password-reset/` starts a generic-response reset email, and `POST .../password-reset/confirm/` consumes its single-use token.
 - Teachers can list students at `GET /api/v1/workspaces/{slug}/students/` and approve or reject them at `POST .../{id}/approve/` and `POST .../{id}/reject/`.

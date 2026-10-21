@@ -67,7 +67,75 @@ class StudentAuthenticationTests(APITestCase):
         student = User.objects.get(email="student@example.com", workspace=self.workspace)
         self.assertEqual(student.role, User.Role.STUDENT)
         self.assertEqual(student.approval_status, User.ApprovalStatus.PENDING)
-        self.assertIsNone(student.phone)
+        self.assertEqual(student.phone, "+100000000")
+
+    def test_registration_accepts_optional_phone_and_normalizes_blank_values_to_null(self):
+        missing = object()
+        for index, phone in enumerate((missing, None, "", "   ")):
+            with self.subTest(phone=phone):
+                cache.clear()
+                payload = {"email": f"blank-phone-{index}@example.com"}
+                if phone is not missing:
+                    payload["phone"] = phone
+                response = self.register(**payload)
+                self.assertEqual(response.status_code, 201, response.data)
+                student = User.objects.get(
+                    email=f"blank-phone-{index}@example.com",
+                    workspace=self.workspace,
+                )
+                self.assertIsNone(student.phone)
+
+    def test_phone_is_returned_after_approval_and_login_and_in_teacher_list(self):
+        response = self.register(
+            email="phone@example.com",
+            phone="+1 (234) 567-890",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        student = User.objects.get(email="phone@example.com", workspace=self.workspace)
+        self.assertEqual(student.phone, "+1 (234) 567-890")
+
+        teacher_client = APIClient()
+        teacher_client.force_authenticate(self.teacher)
+        with self.captureOnCommitCallbacks(execute=True):
+            approval = teacher_client.post(
+                f"/api/v1/workspaces/science/students/{student.pk}/approve/",
+                {},
+                format="json",
+            )
+        self.assertEqual(approval.status_code, 200)
+        login_response = self.login(
+            "phone@example.com",
+            "Student-strong-password-123!",
+        )
+        self.assertEqual(login_response.status_code, 200, login_response.data)
+        self.assertEqual(login_response.data["phone"], "+1 (234) 567-890")
+        me_response = self.client.get(f"{self.base}me/")
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.data["phone"], "+1 (234) 567-890")
+
+        student_list = teacher_client.get("/api/v1/workspaces/science/students/")
+        self.assertEqual(student_list.status_code, 200)
+        listed_student = next(
+            item for item in student_list.data["results"] if item["id"] == student.pk
+        )
+        self.assertEqual(listed_student["phone"], "+1 (234) 567-890")
+
+    def test_registration_rejects_invalid_phone_on_phone_field(self):
+        cases = (
+            "abc",
+            "12345",
+            "1234567890123456",
+            "(" * 25 + "123456",
+        )
+        for index, phone in enumerate(cases):
+            with self.subTest(phone=phone):
+                cache.clear()
+                response = self.register(
+                    email=f"invalid-phone-{index}@example.com",
+                    phone=phone,
+                )
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertIn("phone", response.data)
 
     def test_duplicate_email_same_workspace_includes_teacher_email(self):
         create_student(self.workspace)
