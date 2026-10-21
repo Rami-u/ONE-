@@ -88,7 +88,7 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Staff password token and API routes | `backend/apps/accounts/tokens.py`, `backend/apps/accounts/urls.py`, `backend/apps/accounts/views.py` | Expiring, single-use password tokens; teacher login and password setup/reset |
 | Shared login-key construction | `backend/apps/accounts/identity.py` | Build a normalized workspace-scoped login key consistently in model saves and staff login |
 | Client-IP throttling | `backend/apps/accounts/views.py`, `backend/apps/accounts/student_views.py`, `backend/config/settings.py`, `backend/.env.example` | Reuse `ClientIPRateThrottle` for staff and student auth; set trusted proxy count with `DRF_NUM_PROXIES` (default 0) |
-| Environment-driven email delivery, token expiry, and safe email error helpers | `backend/config/settings.py`, `backend/apps/accounts/services.py`, `backend/.env.example` | Configure console/SMTP delivery and `PASSWORD_RESET_TIMEOUT_SECONDS` (default 259200); `safe_email_exception_message` redacts links, tokens, and passwords from email errors, and `password_reset_expiry_sentence` provides shared expiry wording for future email flows |
+| Environment-driven email delivery, token expiry, and safe email error helpers | `backend/config/settings.py`, `backend/apps/accounts/services.py`, `backend/.env.example` | Configure console/SMTP delivery and `PASSWORD_RESET_TIMEOUT_SECONDS` (default 259200); `safe_email_exception_message` redacts links, tokens, and passwords from email errors, and `password_reset_expiry_sentence` provides shared expiry wording for future email flows. New emails must reuse these helpers instead of copying them. |
 | Workspace teacher/student role permissions | `backend/apps/accounts/permissions.py` | `IsWorkspaceTeacher`, `IsApprovedStudent`, and `IsWorkspaceMember` enforce active workspace and tenant membership |
 | Student auth serializers and views | `backend/apps/accounts/student_serializers.py`, `backend/apps/accounts/student_views.py` | Safe registration, login, session, CSRF, `me`, and password reset API contracts |
 | Student review service and endpoints | `backend/apps/accounts/services.py`, `backend/apps/accounts/student_review_views.py` | Lock and scope a pending student, record reviewer and time, and notify after commit |
@@ -120,6 +120,7 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Student auth serializers use the requested names `email`, `password`, `full_name`, and the safe `me` fields; review serializers use the listed student fields exactly, with no privileged additions (Stage 4).
 - phone is optional at registration; design 5.2 defines the field, 8.1 does not show it (Stage 4).
 - Swagger UI uses drf-spectacular's documented string-valued `SWAGGER_UI_SETTINGS` to add `X-CSRFToken` from the same-host cookie for unsafe requests (Stage 4).
+- The Swagger UI request interceptor guards `request.method` because it also runs for the schema request; without the guard `/api/docs/` failed to load in the browser (Stage 4, commit d2bc620).
 
 ## 9. Deferred to later rounds
 
