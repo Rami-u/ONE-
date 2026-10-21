@@ -85,6 +85,16 @@ class StudentAuthenticationTests(APITestCase):
                 )
                 self.assertIsNone(student.phone)
 
+    def test_registration_accepts_phone_digit_count_boundaries(self):
+        for index, phone in enumerate(("123456", "123456789012345")):
+            with self.subTest(phone=phone):
+                cache.clear()
+                email = f"boundary-phone-{index}@example.com"
+                response = self.register(email=email, phone=phone)
+                self.assertEqual(response.status_code, 201, response.data)
+                student = User.objects.get(email=email, workspace=self.workspace)
+                self.assertEqual(student.phone, phone)
+
     def test_phone_is_returned_after_approval_and_login_and_in_teacher_list(self):
         response = self.register(
             email="phone@example.com",
@@ -123,6 +133,7 @@ class StudentAuthenticationTests(APITestCase):
     def test_registration_rejects_invalid_phone_on_phone_field(self):
         cases = (
             "abc",
+            "123456abc",
             "12345",
             "1234567890123456",
             "(" * 25 + "123456",
