@@ -74,6 +74,51 @@ Suspended workspaces return `403` with `Workspace is unavailable.` on branding, 
 
 In production, configure the web server to serve `/media/` from `backend/public_media`; Django serves these logos directly only in development.
 
+## Stage 4 student authentication and approval
+
+Student routes use the workspace slug in the URL:
+
+- `GET /api/v1/workspaces/{slug}/auth/csrf/` sets the CSRF cookie and returns `204`.
+- `POST /api/v1/workspaces/{slug}/auth/register/` creates a pending student without starting a session; phone is optional at registration.
+- `POST /api/v1/workspaces/{slug}/auth/login/`, `logout/`, and `GET .../me/` use Django sessions. Only approved students can log in; `me` also supports the workspace teacher.
+- `POST .../password-reset/` starts a generic-response reset email, and `POST .../password-reset/confirm/` consumes its single-use token.
+- Teachers can list students at `GET /api/v1/workspaces/{slug}/students/` and approve or reject them at `POST .../{id}/approve/` and `POST .../{id}/reject/`.
+
+Registration, login, reset, and reset-confirm are throttled by client IP. Suspended workspaces return `403` with `Workspace is unavailable.` for these new routes. Rejected students remain in the database and cannot log in or register again with the same workspace email.
+
+### Trying session endpoints by hand
+
+Sign in as the teacher first. This creates `cookies.txt` with the teacher session. The CSRF request adds `csrftoken` to the same cookie jar; the approval request sends it back in `X-CSRFToken`.
+
+```powershell
+curl.exe -c cookies.txt -X POST `
+  -H "Content-Type: application/json" `
+  --data '{"email":"teacher@example.com","password":"replace-with-password"}' `
+  http://127.0.0.1:8000/api/v1/workspaces/science/staff/auth/login/
+curl.exe -c cookies.txt -b cookies.txt http://127.0.0.1:8000/api/v1/workspaces/science/auth/csrf/
+$csrfLine = Get-Content .\cookies.txt | Where-Object { $_ -match '\scsrftoken\s' } | Select-Object -Last 1
+$csrfToken = ($csrfLine.Trim() -split '\s+')[-1]
+curl.exe -c cookies.txt -b cookies.txt -X POST `
+  -H "Content-Type: application/json" `
+  -H "X-CSRFToken: $csrfToken" `
+  --data '{}' `
+  http://127.0.0.1:8000/api/v1/workspaces/science/students/{student_id}/approve/
+```
+
+```bash
+curl -c cookies.txt -X POST \
+  -H 'Content-Type: application/json' \
+  --data '{"email":"teacher@example.com","password":"replace-with-password"}' \
+  http://127.0.0.1:8000/api/v1/workspaces/science/staff/auth/login/
+curl -c cookies.txt -b cookies.txt http://127.0.0.1:8000/api/v1/workspaces/science/auth/csrf/
+csrf_token=$(awk '$6 == "csrftoken" { token = $7 } END { print token }' cookies.txt)
+curl -c cookies.txt -b cookies.txt -X POST \
+  -H 'Content-Type: application/json' \
+  -H "X-CSRFToken: $csrf_token" \
+  --data '{}' \
+  http://127.0.0.1:8000/api/v1/workspaces/science/students/{student_id}/approve/
+```
+
 ### Troubleshooting
 
 #### `/api/docs/` shows Not Found
@@ -112,7 +157,22 @@ The staff authentication routes are workspace scoped:
 
 Invitation and reset links expire according to `PASSWORD_RESET_TIMEOUT_SECONDS` (default `259200`, or 3 days). The set-password route also completes password resets because the design defines no separate reset-finish endpoint. Email delivery errors do not reveal whether an account exists; failed invites can be resent by an admin. Console email is selected by default with `DJANGO_DEBUG=True`; SMTP is the default with debug disabled.
 
-Staff login, password-reset, and set-password requests are rate limited by the caller's IP, including requests made with an authenticated session. `DRF_NUM_PROXIES` defaults to `0`, which ignores `X-Forwarded-For`; production deployments behind exactly one trusted reverse proxy must set it to `1`.
+Staff login, password-reset, and set-password requests are rate limited by the caller's IP, including requests made with an authenticated session. `DRF_NUM_PROXIES` defaults to `0`, which ignores `X-Forwarded-For`; production deployments behind exactly one trusted reverse proxy must set it to `1`. See [Production: shared cache for throttling](#production-shared-cache-for-throttling) for configuring shared counters across workers.
+
+### Production: shared cache for throttling
+
+DRF stores throttle counters in Django's default cache. For a multi-worker deployment, configure a shared cache so requests handled by different workers use the same counters. Django's database cache is available without adding a dependency:
+
+```python
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "throttle_cache",
+    }
+}
+```
+
+Create its table once with `python manage.py createcachetable`. Student throttles use this same default cache as staff throttles. A shared Redis cache is another option, but requires approval to add a dependency. Reverse-proxy rate limits on login routes complement DRF throttling; configure `DRF_NUM_PROXIES` to match the actual number of trusted proxies.
 
 ## Stage 1 models and rules
 

@@ -119,6 +119,7 @@ A short question is always cheaper than a wrong guess the team has to find later
 Rules:
 
 - Write only what you verified in the code or by running it. If you are unsure, say so under "Known problems" instead of guessing.
+- Never write machine-specific details (absolute paths, virtual-environment paths, drive letters, local usernames) in memory.md; use repo-relative paths and the commands from the README.
 - Do not paste code, long explanations, or copies of the design. Point to files and sections.
 - Do not edit the scope reminder or the deferred list unless the team asked you to.
 - If you find that `memory.md` contradicts the code, trust the code, fix `memory.md`, and mention it in your report.

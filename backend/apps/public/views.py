@@ -6,9 +6,9 @@ from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 
 from apps.accounts.models import User
-from apps.accounts.permissions import ActiveWorkspaceSlugMixin
+from apps.accounts.permissions import IsWorkspaceTeacher, WorkspaceSlugMixin
 from apps.workspaces.models import Workspace
-from .permissions import IsWorkspaceTeacher, PublicAccess
+from .permissions import PublicAccess
 from .serializers import (
     PublicTeacherDirectorySerializer,
     PublicTeacherProfileSerializer,
@@ -53,11 +53,7 @@ class PublicTeacherProfileView(generics.RetrieveAPIView):
         ).distinct()
 
 
-class PublicWorkspaceSlugMixin(ActiveWorkspaceSlugMixin):
-    unavailable_message = "Workspace is unavailable."
-
-
-class WorkspaceBrandingView(PublicWorkspaceSlugMixin, APIView):
+class WorkspaceBrandingView(WorkspaceSlugMixin, APIView):
     permission_classes = [PublicAccess]
     serializer_class = WorkspaceBrandingSerializer
 
@@ -69,7 +65,7 @@ class WorkspaceBrandingView(PublicWorkspaceSlugMixin, APIView):
         return Response(serializer.data)
 
 
-class WorkspacePublicProfileView(PublicWorkspaceSlugMixin, APIView):
+class WorkspacePublicProfileView(WorkspaceSlugMixin, APIView):
     permission_classes = [PublicAccess]
     serializer_class = PublicTeacherProfileSerializer
 
@@ -82,7 +78,7 @@ class WorkspacePublicProfileView(PublicWorkspaceSlugMixin, APIView):
         return Response(serializer.data)
 
 
-class WorkspaceSettingsView(PublicWorkspaceSlugMixin, APIView):
+class WorkspaceSettingsView(WorkspaceSlugMixin, APIView):
     permission_classes = [IsWorkspaceTeacher]
     serializer_class = WorkspaceSettingsSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]

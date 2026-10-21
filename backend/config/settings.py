@@ -97,6 +97,10 @@ REST_FRAMEWORK = {
         "staff_login": "5/minute",
         "staff_password_reset": "3/hour",
         "staff_set_password": "5/hour",
+        "student_register": "10/hour",
+        "student_login": "5/minute",
+        "student_password_reset": "3/hour",
+        "student_password_reset_confirm": "5/hour",
     },
     # Trust forwarded client IPs only when the deployment has configured its
     # exact number of trusted reverse proxies. Zero ignores X-Forwarded-For.
@@ -107,6 +111,19 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Backend API for the educational platform.",
     "VERSION": "1.0.0",
     "COMPONENT_SPLIT_REQUEST": True,
+    "SWAGGER_UI_SETTINGS": """{
+      deepLinking: true,
+      requestInterceptor: (request) => {
+        const cookie = document.cookie.split('; ').find((item) => item.startsWith('csrftoken='));
+        if (cookie && request.method &&
+            ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method.toUpperCase())) {
+          request.headers = request.headers || {};
+          request.headers['X-CSRFToken'] = decodeURIComponent(cookie.slice('csrftoken='.length));
+          request.credentials = 'same-origin';
+        }
+        return request;
+      }
+    }""",
 }
 
 LANGUAGE_CODE = "en-us"
@@ -140,6 +157,7 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@localhost")
 SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=True)
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = False
 PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT_SECONDS", default=259200)
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS", default=["https://*.edunova.com"]
