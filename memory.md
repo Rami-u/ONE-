@@ -22,6 +22,9 @@ It is **not a copy of the design** and **not a log of everything done**: keep it
 | `docs/backend-design.md` | The full design | Only the sections named in your prompt |
 | `README.md` | How to run, test, add a feature | When setting up or finishing a stage |
 | `backend/.env.example` | Every environment variable | When touching settings |
+| `docs/review-checklist.md` | Checklist for the human reviewer of a stage | Only if the prompt names it |
+| `docs/open-questions.md` | Decisions the team has not made yet | Only if the prompt names it |
+| `docs/deployment.md` | Production deployment checklist | Only when preparing a deployment |
 
 ## 3. Design index: which section answers what
 
@@ -127,7 +130,7 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - `ENUM_NAME_OVERRIDES` in `SPECTACULAR_SETTINGS` resolves OpenAPI enum naming collisions for `status` across Workspace, CourseEnrollment, and PaymentSubmission without warnings (Stage 5).
 - In-progress payment claims return 409 Conflict when submitting a second claim for the same enrollment or when reviewing an already-reviewed claim; the design specifies state verification but leaves the HTTP error code open (Stage 5).
 - Course enrollment endpoint returns 201 Created on initial enrollment and 200 OK on duplicate enrollment with existing enrollment details (Stage 5).
-- Receipt file storage strips client filenames to <uuid4 hex>.<ext> based on detected content type, and authorized receipt retrieval serves them via FileResponse with nosniff, fixed MIME types (pdf, jpg, jpeg, png inline; fallback application/octet-stream), and private no-store Cache-Control (Stage 5).
+- Receipt file storage strips client filenames to &lt;uuid4 hex&gt;.&lt;ext&gt; based on detected content type, and authorized receipt retrieval serves them via FileResponse with nosniff, fixed MIME types (pdf, jpg, jpeg, png inline; fallback application/octet-stream), and private no-store Cache-Control (Stage 5).
 - Receipt validator restricts image decoding to formats=["JPEG", "PNG"], enforces MAX_RECEIPT_PIXELS=25M, and catches all Pillow exceptions to return 400 instead of 500 for corrupt files (Stage 5 repair).
 - PaymentSubmissionAdmin displays read-only boolean has_receipt and excludes receipt_image so the Django admin change page does not crash on private file fields (Stage 5 repair).
 - CourseQuerysetMixin defines both get_queryset and get_permissions (POST/PATCH requires IsWorkspaceTeacher; GET allows IsWorkspaceTeacherOrApprovedStudent) to centralize course access rules in one place (Stage 5 repair).
@@ -166,33 +169,15 @@ Stage 5 verification from `backend/`: `python manage.py check`; `python manage.p
 - Password-reset responses have the same body for known and unknown emails, but response time can still reveal account existence because email is sent in the request; move reset email delivery to a background task later.
 - Development serves logos only when `DEBUG=True`; production needs a web server mapping `/media/` to `backend/public_media`.
 - Replacing a workspace logo does not delete the old file, so orphan logo files accumulate; this is known and not fixed here.
-- `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
-- Throttle counters are per-process until a shared cache is configured (see section 12).
 - Old receipt files stay on disk after a rejected claim is resubmitted.
 - A claim submission that loses a race on the unique constraint can leave an unreferenced receipt file on disk.
 - The PDF check is signature-only.
 - The JPEG check validates only the header (Pillow verify() does nothing for JPEG), so a truncated JPEG with a valid header is accepted.
 - apps/workspaces/image_validators.py (Stage 3) catches only (UnidentifiedImageError, OSError, ValueError), but corrupt uploads (such as PNG without IDAT or minimal DDS) on the logo endpoint return 400 because DRF's ImageField parser catches them first; Stage 3 is not being retroactively modified because its branch is merged.
 - Unpublishing a course does not change existing enrollments and enrollments/me still lists them.
+- `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
+- Throttle counters are per-process until a shared cache is configured (see docs/deployment.md).
 
 ## 12. Production deployment checklist
-Set these in the server's `backend/.env`; never copy `.env.example` as-is. Variable names come from `backend/.env.example`.
 
-| Variable | Dev example | Production |
-|---|---|---|
-| `DJANGO_SECRET_KEY` | `replace-with-a-long-random-secret` | Generate a new long random secret. |
-| `DJANGO_DEBUG` | `True` | `False` |
-| `DJANGO_ENABLE_API_DOCS` | `True` | `False` |
-| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,testserver` | `.<domain>,<domain>`; the leading dot covers every teacher sub-domain. |
-| `CSRF_TRUSTED_ORIGINS` | `https://*.edunova.com` | `https://*.<domain>` |
-| `PLATFORM_BASE_DOMAIN`, `PLATFORM_URL_SCHEME` | `edunova.com`, `https` | Your real domain, `https`. |
-| `DJANGO_SESSION_COOKIE_SECURE` | `False` for local HTTP | `True` |
-| `DJANGO_ADMIN_PATH` | `platform-admin/` | Use a non-guessable path. |
-| `DRF_NUM_PROXIES` | `0` | Set to `1` only when exactly one trusted proxy is in front of Django. |
-| `EMAIL_BACKEND` | `.env.example` explicitly sets the console backend | Switch to `django.core.mail.backends.smtp.EmailBackend` or delete the line to use the non-debug SMTP default. Configure `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, and `DEFAULT_FROM_EMAIL`. |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT` | Local PostgreSQL values | Set real database connection details and credentials. |
-
-Never set `SESSION_COOKIE_DOMAIN` (AGENTS.md section 7).
-Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment (pre-deployment TODOs: `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `CSRF_COOKIE_SECURE`).
-Shared cache for throttling (pre-deployment TODO): default cache is per process; configure Django `DatabaseCache` with `python manage.py createcachetable` or approved Redis backend. Ensure `DRF_NUM_PROXIES` matches trusted proxy count. See README.
-Deployment needs `collectstatic` for `/static/`, a WSGI/ASGI server, and production web server mapping `/media/` to `backend/public_media`.
+See docs/deployment.md.

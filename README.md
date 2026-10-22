@@ -197,3 +197,9 @@ Create its table once with `python manage.py createcachetable`. Student throttle
 - Account identifiers are generated as `<workspace-id>:<lowercase-email>` or `admin:<lowercase-email>` for Platform Admins.
 - New accounts default to pending approval; teacher accounts and Platform Admins created through the manager are approved.
 - DRF uses session authentication, requires authentication by default, and has page-number pagination with 20 items per page.
+
+## Team documents
+
+- `docs/review-checklist.md`: Checklist for the human reviewer of a stage.
+- `docs/open-questions.md`: Decisions the team has not made yet.
+- `docs/deployment.md`: Production deployment checklist.
