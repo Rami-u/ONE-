@@ -1,7 +1,6 @@
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.accounts.models import User
@@ -12,9 +11,11 @@ from .permissions import IsWorkspaceTeacherOrApprovedStudent
 from .serializers import CourseCreateUpdateSerializer, CourseSerializer
 
 
-class CourseListCreateView(WorkspaceSlugMixin, generics.ListCreateAPIView):
-    permission_classes = [IsWorkspaceTeacherOrApprovedStudent]
-    serializer_class = CourseSerializer
+class CourseQuerysetMixin:
+    def get_permissions(self):
+        if self.request.method in {"POST", "PATCH"}:
+            return [IsWorkspaceTeacher()]
+        return [IsWorkspaceTeacherOrApprovedStudent()]
 
     def get_queryset(self):
         user = self.request.user
@@ -28,6 +29,11 @@ class CourseListCreateView(WorkspaceSlugMixin, generics.ListCreateAPIView):
                 )
             )
         return queryset
+
+
+class CourseListCreateView(WorkspaceSlugMixin, CourseQuerysetMixin, generics.ListCreateAPIView):
+    permission_classes = [IsWorkspaceTeacherOrApprovedStudent]
+    serializer_class = CourseSerializer
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -49,8 +55,6 @@ class CourseListCreateView(WorkspaceSlugMixin, generics.ListCreateAPIView):
         responses={201: CourseSerializer},
     )
     def post(self, request, *args, **kwargs):
-        if not IsWorkspaceTeacher().has_permission(request, self):
-            raise PermissionDenied("Only the workspace teacher can create courses.")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         course = serializer.save(workspace=self.workspace)
@@ -58,24 +62,11 @@ class CourseListCreateView(WorkspaceSlugMixin, generics.ListCreateAPIView):
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
 
-class CourseDetailView(WorkspaceSlugMixin, generics.RetrieveUpdateAPIView):
+class CourseDetailView(WorkspaceSlugMixin, CourseQuerysetMixin, generics.RetrieveUpdateAPIView):
     http_method_names = ["get", "patch", "head", "options"]
     lookup_url_kwarg = "course_id"
     permission_classes = [IsWorkspaceTeacherOrApprovedStudent]
     serializer_class = CourseSerializer
-
-    def get_queryset(self):
-        user = self.request.user
-        queryset = Course.objects.filter(workspace=self.workspace)
-        if user.role == User.Role.STUDENT:
-            queryset = queryset.filter(is_published=True).prefetch_related(
-                Prefetch(
-                    "enrollments",
-                    queryset=CourseEnrollment.objects.filter(student=user),
-                    to_attr="user_enrollment",
-                )
-            )
-        return queryset
 
     def get_serializer_class(self):
         if self.request.method == "PATCH":
@@ -97,11 +88,10 @@ class CourseDetailView(WorkspaceSlugMixin, generics.RetrieveUpdateAPIView):
         responses=CourseSerializer,
     )
     def patch(self, request, *args, **kwargs):
-        if not IsWorkspaceTeacher().has_permission(request, self):
-            raise PermissionDenied("Only the workspace teacher can update courses.")
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         course = serializer.save()
         output_serializer = CourseSerializer(course, context={"request": request})
         return Response(output_serializer.data)
+
