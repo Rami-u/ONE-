@@ -4,6 +4,7 @@ import os
 import re
 from unittest.mock import patch
 
+from django.contrib.auth.models import AnonymousUser
 from django.urls import reverse
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -18,6 +19,7 @@ from apps.courses.tests.helpers import create_course
 from apps.enrollments.models import CourseEnrollment
 from apps.enrollments.tests.helpers import create_enrollment
 from apps.payments.models import PaymentSubmission
+from apps.payments.permissions import IsReceiptTeacherOrOwner
 from apps.payments.services import (
     PaymentConflictError,
     confirm_payment,
@@ -981,6 +983,111 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
             os.path.abspath(receipt_path).startswith(temp_dir),
             f"Expected {receipt_path} to be inside {temp_dir}",
         )
+
+
+class StubRequest:
+    def __init__(self, user):
+        self.user = user
+
+
+class StubView:
+    def __init__(self, workspace):
+        self.workspace = workspace
+
+
+class ReceiptPermissionStubTests(TemporaryMediaMixin, APITestCase):
+    def setUp(self):
+        self.workspace = create_workspace("perm-ws")
+        self.suspended_workspace = create_workspace("suspended-perm-ws")
+        self.suspended_workspace.status = Workspace.Status.SUSPENDED
+        self.suspended_workspace.save()
+        self.suspended_teacher = create_teacher(
+            self.suspended_workspace, email="suspended-teacher-perm@example.com"
+        )
+
+        self.teacher = create_teacher(self.workspace, email="teacher-perm@example.com")
+        self.other_workspace = create_workspace("other-perm-ws")
+        self.other_teacher = create_teacher(self.other_workspace, email="other-teacher-perm@example.com")
+
+        self.course = create_course(self.workspace, title="Perm Course")
+        self.student_owner = create_student(
+            self.workspace,
+            email="owner@example.com",
+            approval_status=User.ApprovalStatus.APPROVED,
+        )
+        self.student_other = create_student(
+            self.workspace,
+            email="other-student@example.com",
+            approval_status=User.ApprovalStatus.APPROVED,
+        )
+        self.pending_student = create_student(
+            self.workspace,
+            email="pending-owner@example.com",
+            approval_status=User.ApprovalStatus.PENDING,
+        )
+        self.rejected_student = create_student(
+            self.workspace,
+            email="rejected-owner@example.com",
+            approval_status=User.ApprovalStatus.REJECTED,
+        )
+        self.assistant_user = User.objects.create_user(
+            email="assistant-perm@example.com",
+            password="password123",
+            workspace=self.workspace,
+            role=User.Role.ASSISTANT,
+        )
+
+        self.enrollment = create_enrollment(self.workspace, self.student_owner, self.course)
+        self.payment = create_payment(self.workspace, self.enrollment, self.student_owner)
+
+        self.pending_enrollment = create_enrollment(self.workspace, self.pending_student, self.course)
+        self.pending_payment = create_payment(self.workspace, self.pending_enrollment, self.pending_student)
+
+        self.rejected_enrollment = create_enrollment(self.workspace, self.rejected_student, self.course)
+        self.rejected_payment = create_payment(self.workspace, self.rejected_enrollment, self.rejected_student)
+
+    def _eval_combined(self, user, workspace, payment):
+        perm = IsReceiptTeacherOrOwner()
+        req = StubRequest(user)
+        view = StubView(workspace)
+        if not perm.has_permission(req, view):
+            return False
+        return perm.has_object_permission(req, view, payment)
+
+    def _eval_has_permission(self, user, workspace):
+        perm = IsReceiptTeacherOrOwner()
+        req = StubRequest(user)
+        view = StubView(workspace)
+        return perm.has_permission(req, view)
+
+    def test_stub_teacher_allowed(self):
+        self.assertTrue(self._eval_combined(self.teacher, self.workspace, self.payment))
+
+    def test_stub_owner_allowed(self):
+        self.assertTrue(self._eval_combined(self.student_owner, self.workspace, self.payment))
+
+    def test_stub_another_approved_student_denied(self):
+        self.assertFalse(self._eval_combined(self.student_other, self.workspace, self.payment))
+
+    def test_stub_teacher_of_another_workspace_denied(self):
+        self.assertFalse(self._eval_has_permission(self.other_teacher, self.workspace))
+        self.assertFalse(self._eval_combined(self.other_teacher, self.workspace, self.payment))
+
+    def test_stub_pending_owner_denied(self):
+        self.assertFalse(self._eval_combined(self.pending_student, self.workspace, self.pending_payment))
+
+    def test_stub_rejected_owner_denied(self):
+        self.assertFalse(self._eval_combined(self.rejected_student, self.workspace, self.rejected_payment))
+
+    def test_stub_has_permission_suspended_workspace_denied(self):
+        self.assertFalse(self._eval_has_permission(self.suspended_teacher, self.suspended_workspace))
+
+    def test_stub_has_permission_anonymous_denied(self):
+        self.assertFalse(self._eval_has_permission(AnonymousUser(), self.workspace))
+
+    def test_stub_has_permission_user_neither_teacher_nor_student_denied(self):
+        self.assertFalse(self._eval_has_permission(self.assistant_user, self.workspace))
+
 
 
 

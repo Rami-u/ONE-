@@ -1,17 +1,16 @@
 from django.http import FileResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
-from rest_framework import generics, permissions, status
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework import generics, status
+from rest_framework.exceptions import NotFound
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import User
 from apps.accounts.permissions import IsApprovedStudent, IsWorkspaceTeacher, WorkspaceSlugMixin
 from apps.enrollments.models import CourseEnrollment
 from .models import PaymentSubmission
-from .permissions import CanViewReceiptPermission
+from .permissions import IsReceiptTeacherOrOwner
 from .serializers import (
     PaymentClaimCreateSerializer,
     PaymentRejectSerializer,
@@ -99,7 +98,7 @@ class PaymentListView(WorkspaceSlugMixin, generics.ListAPIView):
 
 
 class PaymentReceiptView(WorkspaceSlugMixin, APIView):
-    permission_classes = [CanViewReceiptPermission]
+    permission_classes = [IsReceiptTeacherOrOwner]
 
     @extend_schema(
         summary="View payment receipt",
@@ -123,30 +122,13 @@ class PaymentReceiptView(WorkspaceSlugMixin, APIView):
         },
     )
     def get(self, request, slug, payment_id):
-        user = request.user
-        if not (user and user.is_authenticated):
-            raise PermissionDenied("Authentication required.")
-
         payment = PaymentSubmission.objects.filter(
             workspace=self.workspace
         ).filter(pk=payment_id).first()
         if payment is None:
             raise NotFound("Payment not found.")
 
-        is_teacher = (
-            user.role == User.Role.TEACHER
-            and user.approval_status == User.ApprovalStatus.APPROVED
-            and user.workspace_id == self.workspace.pk
-        )
-        is_owner = (
-            user.role == User.Role.STUDENT
-            and user.approval_status == User.ApprovalStatus.APPROVED
-            and user.workspace_id == self.workspace.pk
-            and payment.submitted_by_id == user.pk
-        )
-
-        if not (is_teacher or is_owner):
-            raise PermissionDenied("You do not have permission to view this receipt.")
+        self.check_object_permissions(request, payment)
 
         if not payment.receipt_image:
             raise NotFound("Receipt not found.")
