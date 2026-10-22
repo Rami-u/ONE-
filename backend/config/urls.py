@@ -21,6 +21,9 @@ def api_docs_when_enabled(view):
 urlpatterns = [path(settings.DJANGO_ADMIN_PATH, admin.site.urls)]
 urlpatterns += [path("api/v1/", include("apps.accounts.urls"))]
 urlpatterns += [path("api/v1/", include("apps.public.urls"))]
+urlpatterns += [path("api/v1/", include("apps.courses.urls"))]
+urlpatterns += [path("api/v1/", include("apps.enrollments.urls"))]
+urlpatterns += [path("api/v1/", include("apps.payments.urls"))]
 urlpatterns += [
     path(
         "api/schema/",

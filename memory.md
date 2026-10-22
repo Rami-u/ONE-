@@ -1,10 +1,7 @@
 # memory.md - Project memory for the coding agent
 
-**Read this file first, at the start of every session.** It is the map and the current state of the project, so you do not need to scan the whole repository.
-
-It is **not a copy of the design.** For details, read only the design sections named in your prompt or in the index below. It is also **not a log of everything you did**: keep it short (about 200 lines at most) and rewrite entries instead of appending forever.
-
-You update it at the end of every stage, in the same commit as the code (see AGENTS.md, definition of done). If this file and the code disagree, the code is right: fix this file and mention it in your report.
+**Read this file first, at the start of every session.** Map and current state of the project.
+It is **not a copy of the design** and **not a log of everything done**: keep it short (about 200 lines at most) and rewrite entries instead of appending forever. Update at the end of every stage in the same commit as code. If this file and code disagree, the code is right.
 
 ---
 
@@ -54,7 +51,6 @@ You update it at the end of every stage, in the same commit as the code (see AGE
 - **Placeholders:** `apps/ai/` and `apps/proctoring/` are empty (README only).
 
 ## 5. Status
-
 Update the row of the stage you worked on. Statuses: `not started`, `in progress`, `done - awaiting review`, `merged`.
 
 | Stage | Content | Status | Branch | Reviewer |
@@ -63,11 +59,10 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 | 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
 | 3 | Public showcase, workspace settings | merged (PR #5) | stage-3-public-showcase | - |
 | 4 | Student registration, login, approval | done - awaiting review | stage-4-student-auth | - |
-| 5 | Courses, enrollment, manual payments | not started | - | - |
+| 5 | Courses, enrollment, manual payments | done - awaiting review | stage-5-courses-payments | - |
 | 6 | Content and assessment skeleton | not started | - | - |
 
 ## 6. Repository map
-
 Fill this in as apps are created. One row per app, kept to one line each.
 
 | App | Responsibility | Key models | Endpoints (prefix `/api/v1/`) | Stage |
@@ -75,9 +70,11 @@ Fill this in as apps are created. One row per app, kept to one line each.
 | workspaces | Tenant configuration and identity; admin workspace lifecycle | `Workspace` | Admin workspace list/detail/suspend/activate (`admin/workspaces/`) | 2 |
 | accounts | Custom identity, teacher onboarding, staff and student auth, student review | `User` | Admin teacher management; staff/student auth; workspace students/review (`workspaces/{slug}/...`) | 2–4 |
 | public | Safe teacher directory, profiles, branding, and teacher workspace settings | `Workspace` (uses `User` for teacher display name) | Public teacher directory/profile; workspace branding/public-profile/settings | 3 |
+| courses | Workspace course catalog, teacher course authoring, student list | `Course` | Workspace courses list/create/retrieve/update (`workspaces/{slug}/courses/`) | 5 |
+| enrollments | Course enrollment lifecycle, price snapshots, and content access | `CourseEnrollment` | Course enroll, my enrollments (`workspaces/{slug}/courses/.../enroll/`, `enrollments/me/`) | 5 |
+| payments | Manual payment claims, receipts, review, and enrollment activation | `PaymentSubmission` | Submit claim, list, view receipt, confirm, reject (`workspaces/{slug}/payments/`) | 5 |
 
 ## 7. Reusable building blocks
-
 The patterns the team will copy. Record where each one lives so nobody rewrites it.
 
 | Name | Location | Use it for |
@@ -98,9 +95,15 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Account test helpers and Stage 4 coverage | `backend/apps/accounts/tests/helpers.py`, `backend/apps/accounts/tests/test_student_*.py` | Create workspace accounts; cover student auth, isolation, permissions, throttling, review, and schemas |
 | Safe public response serializers and logo validation/storage | `backend/apps/public/serializers.py`, `backend/apps/workspaces/image_validators.py`, `backend/apps/workspaces/storage.py` | Restrict showcase fields; validate public JPEG/PNG/WebP logos and store uploads separately from private media |
 | Public showcase endpoint tests | `backend/apps/public/tests/test_public_api.py` | Cover visibility, search, pagination, safe fields, workspace scoping, settings, and logo validation |
+| Active enrollment permission | `backend/apps/enrollments/permissions.py` | `HasActiveEnrollment` verifies active student course enrollment before granting course content access |
+| Course catalog permission | `backend/apps/courses/permissions.py` | `IsWorkspaceTeacherOrApprovedStudent` allows approved teachers and students to view catalog |
+| Course enrollment and payment services | `backend/apps/enrollments/services.py`, `backend/apps/payments/services.py` | Idempotent student course enrollment; atomic payment claim submission, review, and enrollment activation |
+| Receipt access permission | `backend/apps/payments/permissions.py` | `IsReceiptTeacherOrOwner` checks active workspace, teacher role or owning student for receipts |
+| Private receipt storage and file validator | `backend/apps/payments/storage.py`, `backend/apps/payments/validators.py` | Store receipts privately with no public URL; validate JPEG/PNG/PDF files up to 5 MB |
+| Temporary media test mixin | `backend/apps/payments/tests/helpers.py` | `TemporaryMediaMixin` isolates media uploads to a clean temporary directory during test runs |
+| Course, enrollment, payment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/enrollments/tests/helpers.py`, `backend/apps/payments/tests/helpers.py` | Create courses, enrollments, and payment submissions for test suites |
 
 ## 8. Decisions the design did not cover
-
 One line each: what you decided, why, and the stage. The reviewer checks this list.
 
 - Workspace slugs use 3–63 lowercase letters/digits joined by single hyphens; additionally reserve `auth`, `accounts`, `dashboard`, `billing`, `docs`, `help`, `cdn`, `assets`, and `files` to keep common service subdomains unavailable to workspaces (Stage 1).
@@ -124,6 +127,23 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - phone is optional at registration; design 5.2 defines the field, 8.1 does not show it (Stage 4).
 - Swagger UI uses drf-spectacular's documented string-valued `SWAGGER_UI_SETTINGS` to add `X-CSRFToken` from the same-host cookie for unsafe requests (Stage 4).
 - The Swagger UI request interceptor guards `request.method` because it also runs for the schema request; without the guard `/api/docs/` failed to load in the browser (Stage 4, commit d2bc620).
+- `ENUM_NAME_OVERRIDES` in `SPECTACULAR_SETTINGS` resolves OpenAPI enum naming collisions for `status` across Workspace, CourseEnrollment, and PaymentSubmission without warnings (Stage 5).
+- In-progress payment claims return 409 Conflict when submitting a second claim for the same enrollment or when reviewing an already-reviewed claim; the design specifies state verification but leaves the HTTP error code open (Stage 5).
+- Course enrollment endpoint returns 201 Created on initial enrollment and 200 OK on duplicate enrollment with existing enrollment details (Stage 5).
+- Receipt file storage strips client filenames to &lt;uuid4 hex&gt;.&lt;ext&gt; based on detected content type, and authorized receipt retrieval serves them via FileResponse with nosniff, fixed MIME types (pdf, jpg, jpeg, png inline; fallback application/octet-stream), and private no-store Cache-Control (Stage 5).
+- Receipt validator restricts image decoding to formats=["JPEG", "PNG"], enforces MAX_RECEIPT_PIXELS=25M, and catches all Pillow exceptions to return 400 instead of 500 for corrupt files (Stage 5 repair).
+- PaymentSubmissionAdmin displays read-only boolean has_receipt and excludes receipt_image so the Django admin change page does not crash on private file fields (Stage 5 repair).
+- CourseQuerysetMixin defines both get_queryset and get_permissions (POST/PATCH requires IsWorkspaceTeacher; GET allows IsWorkspaceTeacherOrApprovedStudent) to centralize course access rules in one place (Stage 5 repair).
+- Non-teacher attempts to create or update courses return DRF's standard 403 permission denied message rather than a custom response to adhere to project error response patterns (Stage 5 repair).
+- Course enrollment and payment claim submission handle concurrent race conditions by locking rows and catching database IntegrityError inside savepoints to return 200/409 instead of 500 (Stage 5 repair).
+- HasActiveEnrollment fails closed by returning False when a student's course_id cannot be resolved and removes the pk fallback so unassociated requests cannot bypass content authorization (Stage 5 repair).
+- The ai/proctoring README placeholders were added during Stage 5, ahead of Stage 6, which will replace them, to keep the repository layout consistent with scope rules (Stage 5).
+- Course price is required on create in CourseCreateUpdateSerializer without a serializer default so teachers make an explicit pricing decision on creation (Stage 5 repair).
+- Payment claim note and payment rejection reason enforce a 1000-character limit to prevent unbounded text storage while leaving ample room for user input (Stage 5 repair).
+- Invalid status query parameters on GET /payments/ return 400 Bad Request matching GET /students/ to keep staff review endpoint filters consistent (Stage 5 repair).
+- Storage location is resolved lazily and tests use TemporaryMediaMixin to prevent test uploads from polluting backend/private_media (Stage 5 repair).
+- apps/payments/permissions.py was created in Batch 1 outside that item's scope and reshaped into IsReceiptTeacherOrOwner in this batch (one permission class per rule, no inline duplicate) (Stage 5 repair).
+- Receipt endpoint OpenAPI 200 response documents binary schemas across application/pdf, image/png, and image/jpeg removing inaccurate application/json defaults (Stage 5 repair).
 
 ## 9. Deferred to later rounds
 
@@ -135,14 +155,11 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Email verification, refunds, receipt retention, online payments.
 
 ## 10. How to run
-
 From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`.
 
-Verify a stage: from `backend/` with the virtual environment active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
-
-Stage 3 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate`; `python manage.py test` (49 tests passed).
-
-Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (96 tests passed).
+Verify a stage: from `backend/` with virtualenv active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
+Stage 3 verification: 49 tests passed. Stage 4 verification: 97 tests passed.
+Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (231 tests passed).
 
 ## 11. Known problems
 
@@ -152,6 +169,12 @@ Stage 4 verification from `backend/`: `python manage.py check`; `python manage.p
 - Password-reset responses have the same body for known and unknown emails, but response time can still reveal account existence because email is sent in the request; move reset email delivery to a background task later.
 - Development serves logos only when `DEBUG=True`; production needs a web server mapping `/media/` to `backend/public_media`.
 - Replacing a workspace logo does not delete the old file, so orphan logo files accumulate; this is known and not fixed here.
+- Old receipt files stay on disk after a rejected claim is resubmitted.
+- A claim submission that loses a race on the unique constraint can leave an unreferenced receipt file on disk.
+- The PDF check is signature-only.
+- The JPEG check validates only the header (Pillow verify() does nothing for JPEG), so a truncated JPEG with a valid header is accepted.
+- apps/workspaces/image_validators.py (Stage 3) catches only (UnidentifiedImageError, OSError, ValueError), but corrupt uploads (such as PNG without IDAT or minimal DDS) on the logo endpoint return 400 because DRF's ImageField parser catches them first; Stage 3 is not being retroactively modified because its branch is merged.
+- Unpublishing a course does not change existing enrollments and enrollments/me still lists them.
 - `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
 - Throttle counters are per-process until a shared cache is configured (see docs/deployment.md).
 
