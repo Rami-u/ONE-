@@ -214,3 +214,67 @@ class CourseApiTests(APITestCase):
         response = self.client.get("/api/v1/workspaces/alpha/courses/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_create_course_missing_price_returns_400(self):
+        self.client.force_login(self.teacher_a)
+        response = self.client.post(
+            "/api/v1/workspaces/alpha/courses/",
+            data={"title": "Missing Price Course"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get("price"), ["This field is required."])
+
+    def test_create_course_zero_price_accepted_201(self):
+        self.client.force_login(self.teacher_a)
+        response = self.client.post(
+            "/api/v1/workspaces/alpha/courses/",
+            data={"title": "Free Course", "price": "0.00"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["price"], "0.00")
+
+    def test_create_course_negative_price_rejected_400(self):
+        self.client.force_login(self.teacher_a)
+        response = self.client.post(
+            "/api/v1/workspaces/alpha/courses/",
+            data={"title": "Negative Price Course", "price": "-0.01"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("price", response.data)
+
+    def test_create_course_max_digits_price_accepted_201(self):
+        self.client.force_login(self.teacher_a)
+        response = self.client.post(
+            "/api/v1/workspaces/alpha/courses/",
+            data={"title": "Max Price Course", "price": "99999999.99"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["price"], "99999999.99")
+
+    def test_create_course_exceeds_max_digits_rejected_400(self):
+        self.client.force_login(self.teacher_a)
+        response = self.client.post(
+            "/api/v1/workspaces/alpha/courses/",
+            data={"title": "Too Large Price Course", "price": "100000000.00"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("price", response.data)
+
+    def test_create_course_too_many_decimal_places_rejected_400(self):
+        self.client.force_login(self.teacher_a)
+        response = self.client.post(
+            "/api/v1/workspaces/alpha/courses/",
+            data={"title": "Fractional Price Course", "price": "10.123"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("price", response.data)
+
+    def test_patch_course_without_price_succeeds_200(self):
+        self.client.force_login(self.teacher_a)
+        response = self.client.patch(
+            f"/api/v1/workspaces/alpha/courses/{self.draft_course.id}/",
+            data={"title": "New Title Without Price"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["title"], "New Title Without Price")
+
+

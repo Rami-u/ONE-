@@ -42,7 +42,6 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
         max_digits=10,
         decimal_places=2,
         min_value=Decimal("0.00"),
-        default=Decimal("0.00"),
     )
 
     class Meta:
