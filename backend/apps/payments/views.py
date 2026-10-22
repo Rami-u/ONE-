@@ -2,7 +2,7 @@ from django.http import FileResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import generics, status
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -74,7 +74,10 @@ class PaymentListView(WorkspaceSlugMixin, generics.ListAPIView):
             workspace=self.workspace
         ).select_related("enrollment__course", "submitted_by", "reviewed_by")
         status_param = self.request.query_params.get("status")
-        if status_param:
+        if status_param is not None:
+            valid_statuses = {choice for choice, _label in PaymentSubmission.Status.choices}
+            if status_param not in valid_statuses:
+                raise ValidationError({"status": ["Select a valid choice."]})
             queryset = queryset.filter(status=status_param)
         return queryset
 

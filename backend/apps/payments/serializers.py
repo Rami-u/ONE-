@@ -7,7 +7,12 @@ from .validators import validate_receipt_file
 
 class PaymentClaimCreateSerializer(serializers.Serializer):
     method = serializers.ChoiceField(choices=PaymentSubmission.Method.choices)
-    note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=1000,
+    )
     receipt_image = serializers.FileField(
         required=False,
         allow_null=True,
@@ -59,4 +64,9 @@ class PaymentSubmissionSerializer(serializers.ModelSerializer):
 
 
 class PaymentRejectSerializer(serializers.Serializer):
-    rejection_reason = serializers.CharField(required=True, min_length=1)
+    rejection_reason = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        trim_whitespace=True,
+        max_length=1000,
+    )

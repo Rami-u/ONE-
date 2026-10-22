@@ -976,6 +976,105 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
             self.assertEqual(content[ctype]["schema"], {"type": "string", "format": "binary"})
         self.assertNotIn("application/json", content)
 
+    def test_payment_reject_reason_validation_limits(self):
+        payment = create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
+        self.client.force_login(self.teacher_a)
+
+        # Whitespace only -> 400
+        res_ws = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
+            data={"rejection_reason": "   \t\n  "},
+        )
+        self.assertEqual(res_ws.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("rejection_reason", res_ws.data)
+
+        # 1001 characters -> 400
+        res_too_long = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
+            data={"rejection_reason": "x" * 1001},
+        )
+        self.assertEqual(res_too_long.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("rejection_reason", res_too_long.data)
+
+        # Exactly 1000 characters -> 200
+        res_ok = self.client.post(
+            f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
+            data={"rejection_reason": "x" * 1000},
+        )
+        self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
+        payment.refresh_from_db()
+        self.assertEqual(payment.rejection_reason, "x" * 1000)
+
+    def test_payment_claim_note_validation_limits(self):
+        self.client.force_login(self.student_a1)
+
+        # 1001 characters -> 400
+        res_too_long = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "note": "n" * 1001},
+        )
+        self.assertEqual(res_too_long.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("note", res_too_long.data)
+
+        # Exactly 1000 characters -> 201
+        res_ok = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "note": "n" * 1000},
+        )
+        self.assertEqual(res_ok.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_ok.data["note"], "n" * 1000)
+
+    def test_payment_list_filter_status_validation(self):
+        p_sub = create_payment(
+            self.workspace_a, self.enrollment_a1, self.student_a1,
+            status=PaymentSubmission.Status.SUBMITTED,
+        )
+        enrollment_a2 = create_enrollment(
+            self.workspace_a, self.student_a2, self.course_a,
+            status=CourseEnrollment.Status.ACTIVE,
+        )
+        p_conf = create_payment(
+            self.workspace_a, enrollment_a2, self.student_a2,
+            status=PaymentSubmission.Status.CONFIRMED,
+        )
+        student_a3 = create_student(
+            self.workspace_a, email="student-a3@example.com",
+            approval_status=User.ApprovalStatus.APPROVED,
+        )
+        enrollment_a3 = create_enrollment(
+            self.workspace_a, student_a3, self.course_a,
+            status=CourseEnrollment.Status.PENDING_PAYMENT,
+        )
+        p_rej = create_payment(
+            self.workspace_a, enrollment_a3, student_a3,
+            status=PaymentSubmission.Status.REJECTED,
+        )
+
+        self.client.force_login(self.teacher_a)
+
+        # Valid status: submitted
+        res_sub = self.client.get("/api/v1/workspaces/alpha/payments/?status=submitted")
+        self.assertEqual(res_sub.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_sub.data["results"]), 1)
+        self.assertEqual(res_sub.data["results"][0]["id"], p_sub.id)
+
+        # Valid status: confirmed
+        res_conf = self.client.get("/api/v1/workspaces/alpha/payments/?status=confirmed")
+        self.assertEqual(res_conf.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_conf.data["results"]), 1)
+        self.assertEqual(res_conf.data["results"][0]["id"], p_conf.id)
+
+        # Valid status: rejected
+        res_rej = self.client.get("/api/v1/workspaces/alpha/payments/?status=rejected")
+        self.assertEqual(res_rej.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_rej.data["results"]), 1)
+        self.assertEqual(res_rej.data["results"][0]["id"], p_rej.id)
+
+        # Invalid status -> 400 with matching error shape
+        res_inv = self.client.get("/api/v1/workspaces/alpha/payments/?status=invalid_status")
+        self.assertEqual(res_inv.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res_inv.data, {"status": ["Select a valid choice."]})
+
     def test_temporary_media_mixin_isolates_private_receipt_storage(self):
         receipt_path = private_receipt_storage.path("x")
         temp_dir = os.path.abspath(self._temp_media_dir.name)
