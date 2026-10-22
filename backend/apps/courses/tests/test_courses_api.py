@@ -277,4 +277,20 @@ class CourseApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["title"], "New Title Without Price")
 
+    def test_stub_user_neither_teacher_nor_student_denied(self):
+        from types import SimpleNamespace
+        from apps.courses.permissions import IsWorkspaceTeacherOrApprovedStudent
+
+        perm = IsWorkspaceTeacherOrApprovedStudent()
+        user = User.objects.create_user(
+            email="assistant-course-perm@example.com",
+            password="password123",
+            workspace=self.workspace_a,
+            role=User.Role.ASSISTANT,
+        )
+        request = SimpleNamespace(user=user)
+        view = SimpleNamespace(workspace=self.workspace_a)
+        self.assertFalse(perm.has_permission(request, view))
+
+
 

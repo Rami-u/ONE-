@@ -191,3 +191,9 @@ class HasActiveEnrollmentTests(TestCase):
         )
         self.assertTrue(self.permission.has_permission(request, view))
 
+    def test_approved_student_object_permission_unresolvable_course_id_denied(self):
+        request, view = self._build_request_and_view(self.student, self.workspace)
+        stub_obj = SimpleNamespace(title="Unresolvable Object")
+        self.assertFalse(self.permission.has_object_permission(request, view, stub_obj))
+
+

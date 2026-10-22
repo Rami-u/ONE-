@@ -936,6 +936,14 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_suspended_workspace_payment_list_denied_403(self):
+        self.workspace_a.status = Workspace.Status.SUSPENDED
+        self.workspace_a.save()
+        self.client.force_login(self.teacher_a)
+        res = self.client.get("/api/v1/workspaces/alpha/payments/")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res.data["detail"], "Workspace is unavailable.")
+
     def test_admin_payment_submission_with_receipt_list_and_change_ok_200(self):
         admin_user = User.objects.create_superuser(
             email="platform-admin@example.com",
