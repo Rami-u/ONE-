@@ -4,6 +4,8 @@ from .models import PaymentSubmission
 
 @admin.register(PaymentSubmission)
 class PaymentSubmissionAdmin(admin.ModelAdmin):
+    exclude = ["receipt_image"]
+    readonly_fields = ["has_receipt"]
     list_display = [
         "id",
         "workspace",
@@ -11,6 +13,7 @@ class PaymentSubmissionAdmin(admin.ModelAdmin):
         "submitted_by",
         "amount",
         "method",
+        "has_receipt",
         "status",
         "submitted_at",
         "reviewed_by",
@@ -23,3 +26,8 @@ class PaymentSubmissionAdmin(admin.ModelAdmin):
         "enrollment__course__title",
         "workspace__name",
     ]
+
+    @admin.display(boolean=True, description="Receipt")
+    def has_receipt(self, obj):
+        return bool(obj.receipt_image)
+

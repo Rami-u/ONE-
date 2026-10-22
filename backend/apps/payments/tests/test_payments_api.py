@@ -3,6 +3,7 @@ from io import BytesIO
 import re
 from unittest.mock import patch
 
+from django.urls import reverse
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
@@ -930,6 +931,27 @@ class PaymentApiTests(APITestCase):
             data={"rejection_reason": "Suspended test"},
         )
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_payment_submission_with_receipt_list_and_change_ok_200(self):
+        admin_user = User.objects.create_superuser(
+            email="platform-admin@example.com",
+            password="adminpassword123",
+        )
+        payment = create_payment(
+            self.workspace_a,
+            self.enrollment_a1,
+            self.student_a1,
+            receipt_image=sample_image_file("admin_receipt.png"),
+        )
+        self.client.force_login(admin_user)
+        list_url = reverse("admin:payments_paymentsubmission_changelist")
+        change_url = reverse("admin:payments_paymentsubmission_change", args=[payment.id])
+
+        list_resp = self.client.get(list_url)
+        self.assertEqual(list_resp.status_code, status.HTTP_200_OK)
+
+        change_resp = self.client.get(change_url)
+        self.assertEqual(change_resp.status_code, status.HTTP_200_OK)
 
 
 
