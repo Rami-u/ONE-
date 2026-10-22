@@ -60,6 +60,14 @@ def build_png_bytes(width, height, corrupt_crc=False, header_only=False):
     return b"".join(chunks)
 
 
+def build_png_no_idat_bytes(width=5, height=5):
+    return build_png_bytes(width, height, header_only=True)
+
+
+def build_dds_bytes():
+    return b"DDS " + struct.pack("<I", 124) + (b"\x00" * 120) + b"\x00\x00\x00\x00"
+
+
 def build_gif_bytes():
     return (
         b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff"

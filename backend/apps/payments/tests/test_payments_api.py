@@ -2,9 +2,11 @@ from decimal import Decimal
 from io import BytesIO
 import os
 import re
+import struct
 from unittest.mock import patch
 
 from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -26,12 +28,15 @@ from apps.payments.services import (
     submit_payment_claim,
 )
 from apps.payments.storage import private_receipt_storage
+from apps.payments.validators import validate_receipt_file
 from apps.workspaces.models import Workspace
 from .helpers import (
     TemporaryMediaMixin,
+    build_dds_bytes,
     build_gif_bytes,
     build_pdf_bytes,
     build_png_bytes,
+    build_png_no_idat_bytes,
     create_payment,
 )
 
@@ -650,7 +655,85 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
             format="multipart",
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Receipt image dimensions are too large.", str(res.data))
+        self.assertEqual(
+            res.data.get("receipt_image"),
+            ["Receipt image dimensions are too large."],
+        )
+
+    def test_receipt_png_without_idat_returns_400(self):
+        self.client.force_login(self.student_a1)
+        self.client.raise_request_exception = False
+        bad_png = SimpleUploadedFile(
+            "no_idat.png",
+            build_png_no_idat_bytes(5, 5),
+            content_type="image/png",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": bad_png},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            res.data.get("receipt_image"),
+            ["Receipt must be a valid JPEG, PNG, or PDF file."],
+        )
+
+    def test_receipt_minimal_dds_returns_400(self):
+        self.client.force_login(self.student_a1)
+        self.client.raise_request_exception = False
+        dds_file = SimpleUploadedFile(
+            "corrupt.dds",
+            build_dds_bytes(),
+            content_type="application/octet-stream",
+        )
+        res = self.client.post(
+            f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
+            data={"method": "transfer", "receipt_image": dds_file},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            res.data.get("receipt_image"),
+            ["Receipt must be a valid JPEG, PNG, or PDF file."],
+        )
+
+    def test_validate_receipt_file_png_chunks_mutation_and_truncation(self):
+        valid_png_bytes = build_png_bytes(5, 5, header_only=False)
+        sig = valid_png_bytes[:8]
+        chunks = []
+        offset = 8
+        while offset < len(valid_png_bytes):
+            length = struct.unpack(">I", valid_png_bytes[offset : offset + 4])[0]
+            chunk_total_len = 12 + length
+            chunks.append(valid_png_bytes[offset : offset + chunk_total_len])
+            offset += chunk_total_len
+
+        variants = []
+        # 1. Variant for every chunk removed:
+        for i in range(len(chunks)):
+            variants.append(sig + b"".join(chunks[:i] + chunks[i + 1 :]))
+
+        # 2. Variant for every cut at a chunk boundary:
+        boundary_offsets = [8]
+        curr = 8
+        for ch in chunks:
+            curr += len(ch)
+            boundary_offsets.append(curr)
+
+        for cut in boundary_offsets:
+            variants.append(valid_png_bytes[:cut])
+
+        for idx, variant_bytes in enumerate(variants):
+            file_obj = SimpleUploadedFile(f"var_{idx}.png", variant_bytes, content_type="image/png")
+            try:
+                validate_receipt_file(file_obj)
+            except ValidationError:
+                pass
+            except Exception as exc:
+                self.fail(
+                    f"validate_receipt_file on variant {idx} raised unexpected {type(exc).__name__}: {exc}"
+                )
 
     def test_receipt_gif_returns_400(self):
         self.client.force_login(self.student_a1)

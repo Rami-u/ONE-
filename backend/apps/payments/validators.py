@@ -1,4 +1,4 @@
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from django.core.exceptions import ValidationError
 
 MAX_RECEIPT_SIZE = 5 * 1024 * 1024  # 5 MB
@@ -14,7 +14,7 @@ def detect_receipt_type(file):
         return "pdf"
 
     try:
-        image_file = Image.open(file)
+        image_file = Image.open(file, formats=["JPEG", "PNG"])
         if image_file.size:
             width, height = image_file.size
             if width * height > MAX_RECEIPT_PIXELS:
@@ -24,14 +24,8 @@ def detect_receipt_type(file):
     except ValidationError:
         file.seek(initial_pos)
         raise
-    except (
-        UnidentifiedImageError,
-        OSError,
-        ValueError,
-        SyntaxError,
-        EOFError,
-        Image.DecompressionBombError,
-    ) as exc:
+    except Exception as exc:
+        # Pillow raises diverse exception types for corrupt input.
         file.seek(initial_pos)
         raise ValidationError("Receipt must be a valid JPEG, PNG, or PDF file.") from exc
     finally:
