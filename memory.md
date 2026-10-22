@@ -1,10 +1,7 @@
 # memory.md - Project memory for the coding agent
 
-**Read this file first, at the start of every session.** It is the map and the current state of the project, so you do not need to scan the whole repository.
-
-It is **not a copy of the design.** For details, read only the design sections named in your prompt or in the index below. It is also **not a log of everything you did**: keep it short (about 200 lines at most) and rewrite entries instead of appending forever.
-
-You update it at the end of every stage, in the same commit as the code (see AGENTS.md, definition of done). If this file and the code disagree, the code is right: fix this file and mention it in your report.
+**Read this file first, at the start of every session.** Map and current state of the project.
+It is **not a copy of the design** and **not a log of everything done**: keep it short (about 200 lines at most) and rewrite entries instead of appending forever. Update at the end of every stage in the same commit as code. If this file and code disagree, the code is right.
 
 ---
 
@@ -51,7 +48,6 @@ You update it at the end of every stage, in the same commit as the code (see AGE
 - **Placeholders:** `apps/ai/` and `apps/proctoring/` are empty (README only).
 
 ## 5. Status
-
 Update the row of the stage you worked on. Statuses: `not started`, `in progress`, `done - awaiting review`, `merged`.
 
 | Stage | Content | Status | Branch | Reviewer |
@@ -64,7 +60,6 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 | 6 | Content and assessment skeleton | not started | - | - |
 
 ## 6. Repository map
-
 Fill this in as apps are created. One row per app, kept to one line each.
 
 | App | Responsibility | Key models | Endpoints (prefix `/api/v1/`) | Stage |
@@ -77,7 +72,6 @@ Fill this in as apps are created. One row per app, kept to one line each.
 | payments | Manual payment claims, receipts, review, and enrollment activation | `PaymentSubmission` | Submit claim, list, view receipt, confirm, reject (`workspaces/{slug}/payments/`) | 5 |
 
 ## 7. Reusable building blocks
-
 The patterns the team will copy. Record where each one lives so nobody rewrites it.
 
 | Name | Location | Use it for |
@@ -107,7 +101,6 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Course, enrollment, payment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/enrollments/tests/helpers.py`, `backend/apps/payments/tests/helpers.py` | Create courses, enrollments, and payment submissions for test suites |
 
 ## 8. Decisions the design did not cover
-
 One line each: what you decided, why, and the stage. The reviewer checks this list.
 
 - Workspace slugs use 3–63 lowercase letters/digits joined by single hyphens; additionally reserve `auth`, `accounts`, `dashboard`, `billing`, `docs`, `help`, `cdn`, `assets`, and `files` to keep common service subdomains unavailable to workspaces (Stage 1).
@@ -134,9 +127,11 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - `ENUM_NAME_OVERRIDES` in `SPECTACULAR_SETTINGS` resolves OpenAPI enum naming collisions for `status` across Workspace, CourseEnrollment, and PaymentSubmission without warnings (Stage 5).
 - In-progress payment claims return 409 Conflict when submitting a second claim for the same enrollment or when reviewing an already-reviewed claim; the design specifies state verification but leaves the HTTP error code open (Stage 5).
 - Course enrollment endpoint returns 201 Created on initial enrollment and 200 OK on duplicate enrollment with existing enrollment details (Stage 5).
-- Authorized receipt retrieval stores uploaded files as <uuid4 hex>.<ext> and serves them via FileResponse with Content-Type mapped from the stored extension (pdf, jpg, jpeg, png inline; fallback application/octet-stream attachment), nosniff, and private, no-store Cache-Control (Stage 5).
-- Receipt file storage strips client filenames to <uuid4 hex>.<ext> based on content detection and serves fixed MIME types to prevent content spoofing and path traversal (Stage 5 repair).
-- Receipt validation catches Pillow SyntaxError, EOFError, DecompressionBombError, and enforces MAX_RECEIPT_PIXELS=25M before verify() so malicious/corrupt images return 400 instead of 500 (Stage 5 repair).
+- Receipt file storage strips client filenames to <uuid4 hex>.<ext> based on detected content type, and authorized receipt retrieval serves them via FileResponse with nosniff, fixed MIME types (pdf, jpg, jpeg, png inline; fallback application/octet-stream), and private no-store Cache-Control (Stage 5).
+- Receipt validator restricts image decoding to formats=["JPEG", "PNG"], enforces MAX_RECEIPT_PIXELS=25M, and catches all Pillow exceptions to return 400 instead of 500 for corrupt files (Stage 5 repair).
+- PaymentSubmissionAdmin displays read-only boolean has_receipt and excludes receipt_image so the Django admin change page does not crash on private file fields (Stage 5 repair).
+- CourseQuerysetMixin defines both get_queryset and get_permissions (POST/PATCH requires IsWorkspaceTeacher; GET allows IsWorkspaceTeacherOrApprovedStudent) to centralize course access rules in one place (Stage 5 repair).
+- Non-teacher attempts to create or update courses return DRF's standard 403 permission denied message rather than a custom response to adhere to project error response patterns (Stage 5 repair).
 - Course enrollment and payment claim submission handle concurrent race conditions by locking rows and catching database IntegrityError inside savepoints to return 200/409 instead of 500 (Stage 5 repair).
 - HasActiveEnrollment fails closed by returning False when a student's course_id cannot be resolved and removes the pk fallback so unassociated requests cannot bypass content authorization (Stage 5 repair).
 - The ai/proctoring README placeholders were added during Stage 5, ahead of Stage 6, which will replace them, to keep the repository layout consistent with scope rules (Stage 5).
@@ -157,16 +152,11 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Email verification, refunds, receipt retention, online payments.
 
 ## 10. How to run
-
 From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`.
 
-Verify a stage: from `backend/` with the virtual environment active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
-
-Stage 3 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate`; `python manage.py test` (49 tests passed).
-
-Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (97 tests passed).
-
-Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (223 tests passed).
+Verify a stage: from `backend/` with virtualenv active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
+Stage 3 verification: 49 tests passed. Stage 4 verification: 97 tests passed.
+Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (231 tests passed).
 
 ## 11. Known problems
 
@@ -182,11 +172,10 @@ Stage 5 verification from `backend/`: `python manage.py check`; `python manage.p
 - A claim submission that loses a race on the unique constraint can leave an unreferenced receipt file on disk.
 - The PDF check is signature-only.
 - The JPEG check validates only the header (Pillow verify() does nothing for JPEG), so a truncated JPEG with a valid header is accepted.
-- apps/workspaces/image_validators.py (Stage 3) has the same unhandled Pillow exceptions and was not changed.
+- apps/workspaces/image_validators.py (Stage 3) catches only (UnidentifiedImageError, OSError, ValueError), but corrupt uploads (such as PNG without IDAT or minimal DDS) on the logo endpoint return 400 because DRF's ImageField parser catches them first; Stage 3 is not being retroactively modified because its branch is merged.
 - Unpublishing a course does not change existing enrollments and enrollments/me still lists them.
 
 ## 12. Production deployment checklist
-
 Set these in the server's `backend/.env`; never copy `.env.example` as-is. Variable names come from `backend/.env.example`.
 
 | Variable | Dev example | Production |
@@ -204,11 +193,6 @@ Set these in the server's `backend/.env`; never copy `.env.example` as-is. Varia
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT` | Local PostgreSQL values | Set real database connection details and credentials. |
 
 Never set `SESSION_COOKIE_DOMAIN` (AGENTS.md section 7).
-
-Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment. It currently warns that `SECURE_SSL_REDIRECT` is not enabled, `SECURE_HSTS_SECONDS` is unset, and `CSRF_COOKIE_SECURE` is not enabled; record these as pre-deployment TODOs.
-
-Shared cache for throttling (pre-deployment TODO): the default cache is per process, so throttle limits multiply by the number of workers. The recommended fix is Django `DatabaseCache` with `python manage.py createcachetable`; Redis is an alternative and needs approval to add a dependency. A reverse-proxy limit on login routes complements DRF throttling but does not replace it; `DRF_NUM_PROXIES` must also be correct. See README's “Production: shared cache for throttling” subsection.
-
-`backend/requirements.txt` has no WSGI server or static-file package; deployment needs `collectstatic` and a web server for `/static/`.
-
-Map `/media/` to `backend/public_media` in the production web server.
+Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment (pre-deployment TODOs: `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `CSRF_COOKIE_SECURE`).
+Shared cache for throttling (pre-deployment TODO): default cache is per process; configure Django `DatabaseCache` with `python manage.py createcachetable` or approved Redis backend. Ensure `DRF_NUM_PROXIES` matches trusted proxy count. See README.
+Deployment needs `collectstatic` for `/static/`, a WSGI/ASGI server, and production web server mapping `/media/` to `backend/public_media`.
