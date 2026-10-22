@@ -99,9 +99,11 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Safe public response serializers and logo validation/storage | `backend/apps/public/serializers.py`, `backend/apps/workspaces/image_validators.py`, `backend/apps/workspaces/storage.py` | Restrict showcase fields; validate public JPEG/PNG/WebP logos and store uploads separately from private media |
 | Public showcase endpoint tests | `backend/apps/public/tests/test_public_api.py` | Cover visibility, search, pagination, safe fields, workspace scoping, settings, and logo validation |
 | Active enrollment permission | `backend/apps/enrollments/permissions.py` | `HasActiveEnrollment` verifies active student course enrollment before granting course content access |
+| Course catalog permission | `backend/apps/courses/permissions.py` | `IsWorkspaceTeacherOrApprovedStudent` allows approved teachers and students to view catalog |
 | Course enrollment and payment services | `backend/apps/enrollments/services.py`, `backend/apps/payments/services.py` | Idempotent student course enrollment; atomic payment claim submission, review, and enrollment activation |
-| Receipt access permission | `backend/apps/payments/permissions.py` | `CanViewReceiptPermission` enforces workspace membership and active status for receipt downloads |
+| Receipt access permission | `backend/apps/payments/permissions.py` | `IsReceiptTeacherOrOwner` checks active workspace, teacher role or owning student for receipts |
 | Private receipt storage and file validator | `backend/apps/payments/storage.py`, `backend/apps/payments/validators.py` | Store receipts privately with no public URL; validate JPEG/PNG/PDF files up to 5 MB |
+| Temporary media test mixin | `backend/apps/payments/tests/helpers.py` | `TemporaryMediaMixin` isolates media uploads to a clean temporary directory during test runs |
 | Course, enrollment, payment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/enrollments/tests/helpers.py`, `backend/apps/payments/tests/helpers.py` | Create courses, enrollments, and payment submissions for test suites |
 
 ## 8. Decisions the design did not cover
@@ -137,6 +139,13 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Receipt validation catches Pillow SyntaxError, EOFError, DecompressionBombError, and enforces MAX_RECEIPT_PIXELS=25M before verify() so malicious/corrupt images return 400 instead of 500 (Stage 5 repair).
 - Course enrollment and payment claim submission handle concurrent race conditions by locking rows and catching database IntegrityError inside savepoints to return 200/409 instead of 500 (Stage 5 repair).
 - HasActiveEnrollment fails closed by returning False when a student's course_id cannot be resolved and removes the pk fallback so unassociated requests cannot bypass content authorization (Stage 5 repair).
+- The ai/proctoring README placeholders were added during Stage 5, ahead of Stage 6, which will replace them, to keep the repository layout consistent with scope rules (Stage 5).
+- Course price is required on create in CourseCreateUpdateSerializer without a serializer default so teachers make an explicit pricing decision on creation (Stage 5 repair).
+- Payment claim note and payment rejection reason enforce a 1000-character limit to prevent unbounded text storage while leaving ample room for user input (Stage 5 repair).
+- Invalid status query parameters on GET /payments/ return 400 Bad Request matching GET /students/ to keep staff review endpoint filters consistent (Stage 5 repair).
+- Storage location is resolved lazily and tests use TemporaryMediaMixin to prevent test uploads from polluting backend/private_media (Stage 5 repair).
+- apps/payments/permissions.py was created in Batch 1 outside that item's scope and reshaped into IsReceiptTeacherOrOwner in this batch (one permission class per rule, no inline duplicate) (Stage 5 repair).
+- Receipt endpoint OpenAPI 200 response documents binary schemas across application/pdf, image/png, and image/jpeg removing inaccurate application/json defaults (Stage 5 repair).
 
 ## 9. Deferred to later rounds
 
@@ -155,9 +164,9 @@ Verify a stage: from `backend/` with the virtual environment active, run `python
 
 Stage 3 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate`; `python manage.py test` (49 tests passed).
 
-Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (96 tests passed).
+Stage 4 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (97 tests passed).
 
-Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (198 tests passed).
+Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (223 tests passed).
 
 ## 11. Known problems
 
@@ -169,6 +178,12 @@ Stage 5 verification from `backend/`: `python manage.py check`; `python manage.p
 - Replacing a workspace logo does not delete the old file, so orphan logo files accumulate; this is known and not fixed here.
 - `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
 - Throttle counters are per-process until a shared cache is configured (see section 12).
+- Old receipt files stay on disk after a rejected claim is resubmitted.
+- A claim submission that loses a race on the unique constraint can leave an unreferenced receipt file on disk.
+- The PDF check is signature-only.
+- The JPEG check validates only the header (Pillow verify() does nothing for JPEG), so a truncated JPEG with a valid header is accepted.
+- apps/workspaces/image_validators.py (Stage 3) has the same unhandled Pillow exceptions and was not changed.
+- Unpublishing a course does not change existing enrollments and enrollments/me still lists them.
 
 ## 12. Production deployment checklist
 
@@ -190,7 +205,10 @@ Set these in the server's `backend/.env`; never copy `.env.example` as-is. Varia
 
 Never set `SESSION_COOKIE_DOMAIN` (AGENTS.md section 7).
 
-Pre-deployment checklist and TODOs:
-- Run `DJANGO_DEBUG=False ... python manage.py check --deploy`. Enable `SECURE_SSL_REDIRECT`, set `SECURE_HSTS_SECONDS`, and enable `CSRF_COOKIE_SECURE`.
-- Shared cache for throttling: default cache is per process; use Django `DatabaseCache` with `createcachetable` or Redis. Configure `DRF_NUM_PROXIES` for reverse-proxy rate limiting.
-- WSGI & static files: `backend/requirements.txt` needs a WSGI server (e.g. gunicorn) and `collectstatic` for `/static/`. Web server maps `/media/` to `backend/public_media`.
+Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py check --deploy` with a production-like environment. It currently warns that `SECURE_SSL_REDIRECT` is not enabled, `SECURE_HSTS_SECONDS` is unset, and `CSRF_COOKIE_SECURE` is not enabled; record these as pre-deployment TODOs.
+
+Shared cache for throttling (pre-deployment TODO): the default cache is per process, so throttle limits multiply by the number of workers. The recommended fix is Django `DatabaseCache` with `python manage.py createcachetable`; Redis is an alternative and needs approval to add a dependency. A reverse-proxy limit on login routes complements DRF throttling but does not replace it; `DRF_NUM_PROXIES` must also be correct. See README's “Production: shared cache for throttling” subsection.
+
+`backend/requirements.txt` has no WSGI server or static-file package; deployment needs `collectstatic` and a web server for `/static/`.
+
+Map `/media/` to `backend/public_media` in the production web server.

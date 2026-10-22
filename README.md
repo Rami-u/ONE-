@@ -77,17 +77,17 @@ In production, configure the web server to serve `/media/` from `backend/public_
 ## Stage 5 courses, enrollment, and manual payments
 
 - `GET /api/v1/workspaces/{slug}/courses/` lists courses. Approved students see only published courses with their own `enrollment_status`; teachers see all courses.
-- `POST /api/v1/workspaces/{slug}/courses/` creates a course (workspace teacher only). The workspace is set from the URL slug.
+- `POST /api/v1/workspaces/{slug}/courses/` creates a course (workspace teacher only). Course `price` is required on creation (`"0"` or `"0.00"` for free; at most 8 digits before decimal and 2 decimal places, up to `"99999999.99"`). `PATCH` without price remains valid. The workspace is set from the URL slug.
 - `GET /api/v1/workspaces/{slug}/courses/{id}/` retrieves a course (teachers see any; students see only published courses in their workspace).
 - `PATCH /api/v1/workspaces/{slug}/courses/{id}/` updates a course (teacher only).
 - `POST /api/v1/workspaces/{slug}/courses/{id}/enroll/` enrolls an approved student. Free courses become `active` immediately; paid courses become `pending_payment`. Enrolling twice returns the existing enrollment. Response includes `payment_instructions`.
 - `GET /api/v1/workspaces/{slug}/enrollments/me/` returns the student's enrollments and statuses.
-- `POST /api/v1/workspaces/{slug}/enrollments/{id}/payments/` submits a manual payment claim (multipart, optional receipt; amount copied from `price_at_enrollment`, never from the client). Only one `submitted` claim allowed per enrollment; resubmission allowed after rejection.
-- `GET /api/v1/workspaces/{slug}/payments/` lists payments for the workspace teacher (filterable by `?status=`).
-- `GET /api/v1/workspaces/{slug}/payments/{id}/receipt/` serves private payment receipts only to the workspace teacher or owning student.
+- `POST /api/v1/workspaces/{slug}/enrollments/{id}/payments/` submits a manual payment claim (multipart, optional receipt; `note` limited to 1000 characters; amount copied from `price_at_enrollment`, never from the client). Only one `submitted` claim allowed per enrollment; resubmission allowed after rejection.
+- `GET /api/v1/workspaces/{slug}/payments/` lists payments for the workspace teacher (filterable by `?status=submitted|confirmed|rejected`; invalid status returns 400 with `{"status": ["Select a valid choice."]}`).
+- `GET /api/v1/workspaces/{slug}/payments/{id}/receipt/` serves private payment receipts only to the workspace teacher or owning student via `FileResponse` with strict binary `Content-Type` headers (`application/pdf`, `image/png`, or `image/jpeg`), `X-Content-Type-Options: nosniff`, and private `Cache-Control`.
 - `POST /api/v1/workspaces/{slug}/payments/{id}/confirm/` confirms a submitted claim and activates the enrollment in the same transaction.
-- `POST /api/v1/workspaces/{slug}/payments/{id}/reject/` rejects a claim with a reason; enrollment stays `pending_payment`.
-- Receipts are validated for type (JPEG, PNG, PDF) and size (at most 5 MB), stored privately in `backend/private_media/receipts`, and never served through a public URL.
+- `POST /api/v1/workspaces/{slug}/payments/{id}/reject/` rejects a claim with a non-blank, stripped reason up to 1000 characters; enrollment stays `pending_payment`.
+- Receipts are validated for type (JPEG, PNG, PDF) and size (at most 5 MB), stored privately in `backend/private_media/receipts`, and never served through a public URL. In tests, media storage is isolated using `TemporaryMediaMixin`.
 - Public showcases (`GET /api/v1/public/teachers/{slug}/` and `GET /api/v1/workspaces/{slug}/public-profile/`) now return real published courses.
 
 ## Stage 4 student authentication and approval
