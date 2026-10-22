@@ -953,5 +953,25 @@ class PaymentApiTests(APITestCase):
         change_resp = self.client.get(change_url)
         self.assertEqual(change_resp.status_code, status.HTTP_200_OK)
 
+    def test_receipt_openapi_schema_describes_binary_files_not_json(self):
+        from drf_spectacular.generators import SchemaGenerator
+
+        generator = SchemaGenerator()
+        schema = generator.get_schema(request=None, public=True)
+        receipt_path = None
+        for path in schema.get("paths", {}):
+            if path.endswith("/payments/{payment_id}/receipt/"):
+                receipt_path = path
+                break
+        self.assertIsNotNone(receipt_path, "Receipt endpoint not found in OpenAPI schema")
+        responses = schema["paths"][receipt_path]["get"]["responses"]
+        content = responses["200"]["content"]
+        expected_types = {"application/pdf", "image/png", "image/jpeg"}
+        for ctype in expected_types:
+            self.assertIn(ctype, content)
+            self.assertEqual(content[ctype]["schema"], {"type": "string", "format": "binary"})
+        self.assertNotIn("application/json", content)
+
+
 
 

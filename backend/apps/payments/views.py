@@ -1,5 +1,6 @@
 from django.http import FileResponse
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -106,7 +107,20 @@ class PaymentReceiptView(WorkspaceSlugMixin, APIView):
             "Authorized endpoint to download/view a payment receipt. "
             "Accessible only to the workspace teacher or the student who submitted the claim."
         ),
-        responses={200: bytes},
+        responses={
+            (200, "application/pdf"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Receipt PDF document",
+            ),
+            (200, "image/png"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Receipt PNG image",
+            ),
+            (200, "image/jpeg"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Receipt JPEG image",
+            ),
+        },
     )
     def get(self, request, slug, payment_id):
         user = request.user
