@@ -1,7 +1,6 @@
 from rest_framework.permissions import BasePermission
 
 from apps.accounts.models import User
-from apps.accounts.permissions import IsApprovedStudent, IsWorkspaceTeacher
 from apps.workspaces.models import Workspace
 
 

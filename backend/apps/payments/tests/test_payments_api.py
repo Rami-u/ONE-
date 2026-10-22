@@ -1,7 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
 import os
-import re
 import struct
 from unittest.mock import patch
 

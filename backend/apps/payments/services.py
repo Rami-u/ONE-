@@ -2,7 +2,6 @@ import uuid
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
-from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.enrollments.models import CourseEnrollment
 from .models import PaymentSubmission
