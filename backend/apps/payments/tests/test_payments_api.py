@@ -1067,11 +1067,9 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
             self.assertEqual(content[ctype]["schema"], {"type": "string", "format": "binary"})
         self.assertNotIn("application/json", content)
 
-    def test_payment_reject_reason_validation_limits(self):
+    def test_payment_reject_reason_whitespace_only_returns_400(self):
         payment = create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
         self.client.force_login(self.teacher_a)
-
-        # Whitespace only -> 400
         res_ws = self.client.post(
             f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
             data={"rejection_reason": "   \t\n  "},
@@ -1079,7 +1077,9 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
         self.assertEqual(res_ws.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("rejection_reason", res_ws.data)
 
-        # 1001 characters -> 400
+    def test_payment_reject_reason_1001_characters_returns_400(self):
+        payment = create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
+        self.client.force_login(self.teacher_a)
         res_too_long = self.client.post(
             f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
             data={"rejection_reason": "x" * 1001},
@@ -1087,7 +1087,9 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
         self.assertEqual(res_too_long.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("rejection_reason", res_too_long.data)
 
-        # Exactly 1000 characters -> 200
+    def test_payment_reject_reason_1000_characters_accepted(self):
+        payment = create_payment(self.workspace_a, self.enrollment_a1, self.student_a1)
+        self.client.force_login(self.teacher_a)
         res_ok = self.client.post(
             f"/api/v1/workspaces/alpha/payments/{payment.id}/reject/",
             data={"rejection_reason": "x" * 1000},
@@ -1096,10 +1098,8 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
         payment.refresh_from_db()
         self.assertEqual(payment.rejection_reason, "x" * 1000)
 
-    def test_payment_claim_note_validation_limits(self):
+    def test_payment_claim_note_1001_characters_returns_400(self):
         self.client.force_login(self.student_a1)
-
-        # 1001 characters -> 400
         res_too_long = self.client.post(
             f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
             data={"method": "transfer", "note": "n" * 1001},
@@ -1107,7 +1107,8 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
         self.assertEqual(res_too_long.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("note", res_too_long.data)
 
-        # Exactly 1000 characters -> 201
+    def test_payment_claim_note_1000_characters_accepted(self):
+        self.client.force_login(self.student_a1)
         res_ok = self.client.post(
             f"/api/v1/workspaces/alpha/enrollments/{self.enrollment_a1.id}/payments/",
             data={"method": "transfer", "note": "n" * 1000},
@@ -1165,6 +1166,22 @@ class PaymentApiTests(TemporaryMediaMixin, APITestCase):
         res_inv = self.client.get("/api/v1/workspaces/alpha/payments/?status=invalid_status")
         self.assertEqual(res_inv.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(res_inv.data, {"status": ["Select a valid choice."]})
+
+    def test_payment_list_filter_empty_status_returns_400(self):
+        self.client.force_login(self.teacher_a)
+        res_payments = self.client.get("/api/v1/workspaces/alpha/payments/?status=")
+        res_students = self.client.get("/api/v1/workspaces/alpha/students/?status=")
+        self.assertEqual(res_payments.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res_payments.status_code, res_students.status_code)
+        self.assertEqual(res_payments.data, res_students.data)
+
+    def test_payment_list_filter_uppercase_status_returns_400(self):
+        self.client.force_login(self.teacher_a)
+        res_payments = self.client.get("/api/v1/workspaces/alpha/payments/?status=SUBMITTED")
+        res_students = self.client.get("/api/v1/workspaces/alpha/students/?status=SUBMITTED")
+        self.assertEqual(res_payments.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res_payments.status_code, res_students.status_code)
+        self.assertEqual(res_payments.data, res_students.data)
 
     def test_temporary_media_mixin_isolates_private_receipt_storage(self):
         receipt_path = private_receipt_storage.path("x")
