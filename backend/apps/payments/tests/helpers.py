@@ -1,7 +1,34 @@
+import os
 import struct
+import tempfile
 import zlib
 
+from django.test import override_settings
+
 from apps.payments.models import PaymentSubmission
+
+
+class TemporaryMediaMixin:
+    """Isolates MEDIA_ROOT to a temporary directory cleaned up after each test class."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._temp_media_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        cls._media_override = override_settings(MEDIA_ROOT=cls._temp_media_dir.name)
+        cls._media_override.enable()
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls._media_override.disable()
+        finally:
+            if hasattr(cls, "_temp_media_dir"):
+                try:
+                    cls._temp_media_dir.cleanup()
+                except Exception:
+                    pass
+            super().tearDownClass()
 
 
 def build_png_bytes(width, height, corrupt_crc=False, header_only=False):

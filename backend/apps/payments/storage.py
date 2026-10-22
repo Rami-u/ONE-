@@ -7,7 +7,6 @@ class PrivateReceiptStorage(FileSystemStorage):
 
     def __init__(self):
         super().__init__(
-            location=settings.MEDIA_ROOT,
             base_url=None,
         )
 

@@ -1,5 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
+import os
 import re
 from unittest.mock import patch
 
@@ -25,6 +26,7 @@ from apps.payments.services import (
 from apps.payments.storage import private_receipt_storage
 from apps.workspaces.models import Workspace
 from .helpers import (
+    TemporaryMediaMixin,
     build_gif_bytes,
     build_pdf_bytes,
     build_png_bytes,
@@ -43,7 +45,7 @@ def sample_pdf_file(name="receipt.pdf", content=b"%PDF-1.4 dummy pdf content for
     return SimpleUploadedFile(name, content, content_type="application/pdf")
 
 
-class PaymentSubmissionModelTests(APITestCase):
+class PaymentSubmissionModelTests(TemporaryMediaMixin, APITestCase):
     def test_model_table_name_and_conditional_unique_constraint(self):
         self.assertEqual(PaymentSubmission._meta.db_table, "payment_submissions")
         workspace = create_workspace("school-pay-model")
@@ -89,7 +91,7 @@ class PaymentSubmissionModelTests(APITestCase):
         self.assertEqual(claim2.status, PaymentSubmission.Status.SUBMITTED)
 
 
-class PaymentApiTests(APITestCase):
+class PaymentApiTests(TemporaryMediaMixin, APITestCase):
     def setUp(self):
         self.workspace_a = create_workspace("alpha")
         self.teacher_a = create_teacher(self.workspace_a, email="teacher-a@example.com")
@@ -971,6 +973,15 @@ class PaymentApiTests(APITestCase):
             self.assertIn(ctype, content)
             self.assertEqual(content[ctype]["schema"], {"type": "string", "format": "binary"})
         self.assertNotIn("application/json", content)
+
+    def test_temporary_media_mixin_isolates_private_receipt_storage(self):
+        receipt_path = private_receipt_storage.path("x")
+        temp_dir = os.path.abspath(self._temp_media_dir.name)
+        self.assertTrue(
+            os.path.abspath(receipt_path).startswith(temp_dir),
+            f"Expected {receipt_path} to be inside {temp_dir}",
+        )
+
 
 
 
