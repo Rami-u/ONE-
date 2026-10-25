@@ -1,0 +1,13 @@
+# Human must choose these from a representative, labeled dataset.
+face_missing:
+  min_recall: TODO_SET_BY_HUMAN
+  max_false_alarms_per_student_hour: TODO_SET_BY_HUMAN
+multiple_faces:
+  min_recall: TODO_SET_BY_HUMAN
+  max_false_alarms_per_student_hour: TODO_SET_BY_HUMAN
+looking_away:
+  min_recall: TODO_SET_BY_HUMAN
+  max_false_alarms_per_student_hour: TODO_SET_BY_HUMAN
+phone_detected:
+  min_recall: TODO_SET_BY_HUMAN
+  max_false_alarms_per_student_hour: TODO_SET_BY_HUMAN

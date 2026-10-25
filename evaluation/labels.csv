@@ -1,0 +1,9 @@
+video,start_sec,end_sec,event_type
+clip_01_normal.mp4,0.0,0.0,none
+clip_02_look_away.mp4,4.0,9.5,looking_away
+clip_03_face_missing.mp4,2.0,7.0,face_missing
+clip_04_two_faces.mp4,5.0,8.5,multiple_faces
+manual_face_missing_20261022.mp4,4.0,12.0,face_missing
+manual_normal_01.mp4,0.0,16.4,none
+manual_multiple_faces_01.mp4,6.0,10.0,multiple_faces
+manual_looking_away_02.mp4,7.0,12.0,looking_away
