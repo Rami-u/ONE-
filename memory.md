@@ -58,9 +58,9 @@ Update the row of the stage you worked on. Statuses: `not started`, `in progress
 | 1 | Bootstrap, workspaces, accounts | merged (PR #1) | stage-1-fixes | - |
 | 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
 | 3 | Public showcase, workspace settings | merged (PR #5) | stage-3-public-showcase | - |
-| 4 | Student registration, login, approval | done - awaiting review | stage-4-student-auth | - |
-| 5 | Courses, enrollment, manual payments | done - awaiting review | stage-5-courses-payments | - |
-| 6 | Content and assessment skeleton | not started | - | - |
+| 4 | Student registration, login, approval | merged (PR #6) | stage-4-student-auth | - |
+| 5 | Courses, enrollment, manual payments | merged (PR #8) | stage-5-courses-payments | - |
+| 6 | Content and assessment skeleton | done - awaiting review | stage-6-skeleton | - |
 
 ## 6. Repository map
 Fill this in as apps are created. One row per app, kept to one line each.
@@ -70,9 +70,12 @@ Fill this in as apps are created. One row per app, kept to one line each.
 | workspaces | Tenant configuration and identity; admin workspace lifecycle | `Workspace` | Admin workspace list/detail/suspend/activate (`admin/workspaces/`) | 2 |
 | accounts | Custom identity, teacher onboarding, staff and student auth, student review | `User` | Admin teacher management; staff/student auth; workspace students/review (`workspaces/{slug}/...`) | 2–4 |
 | public | Safe teacher directory, profiles, branding, and teacher workspace settings | `Workspace` (uses `User` for teacher display name) | Public teacher directory/profile; workspace branding/public-profile/settings | 3 |
-| courses | Workspace course catalog, teacher course authoring, student list | `Course` | Workspace courses list/create/retrieve/update (`workspaces/{slug}/courses/`) | 5 |
+| courses | Workspace catalog and content skeleton | `Course`, `CourseSection`, `Lesson`, `LessonAsset` | Workspace courses list/create/retrieve/update (`workspaces/{slug}/courses/`); content has no endpoints | 5–6 |
 | enrollments | Course enrollment lifecycle, price snapshots, and content access | `CourseEnrollment` | Course enroll, my enrollments (`workspaces/{slug}/courses/.../enroll/`, `enrollments/me/`) | 5 |
 | payments | Manual payment claims, receipts, review, and enrollment activation | `PaymentSubmission` | Submit claim, list, view receipt, confirm, reject (`workspaces/{slug}/payments/`) | 5 |
+| assessments | Question bank, topics, exams, attempts, and answers skeleton | `Topic`, `LessonTopic`, `Question`, `QuestionTopic`, `Exam`, `ExamQuestion`, `ExamAttempt`, `Answer` | None; models/admin only | 6 |
+| ai | Empty registered app; AI teammate owns future generation and analysis contracts in README | None | None | 6 |
+| proctoring | Empty registered app; AI teammate owns future signals/evidence contracts; events will reference `assessments.ExamAttempt` | None | None | 6 |
 
 ## 7. Reusable building blocks
 The patterns the team will copy. Record where each one lives so nobody rewrites it.
@@ -102,6 +105,8 @@ The patterns the team will copy. Record where each one lives so nobody rewrites 
 | Private receipt storage and file validator | `backend/apps/payments/storage.py`, `backend/apps/payments/validators.py` | Store receipts privately with no public URL; validate JPEG/PNG/PDF files up to 5 MB |
 | Temporary media test mixin | `backend/apps/payments/tests/helpers.py` | `TemporaryMediaMixin` isolates media uploads to a clean temporary directory during test runs |
 | Course, enrollment, payment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/enrollments/tests/helpers.py`, `backend/apps/payments/tests/helpers.py` | Create courses, enrollments, and payment submissions for test suites |
+| Related-workspace validator | `backend/apps/workspaces/tenancy.py` | `validate_same_workspace(instance, *field_names)` rejects each mismatched FK with a field-keyed validation error |
+| Content and assessment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/assessments/tests/helpers.py` | Reuse `create_section`, `create_lesson`, `create_lesson_asset`, `create_topic`, `create_question`, `create_exam`, `create_exam_attempt`, `create_answer` with existing account/course helpers |
 
 ## 8. Decisions the design did not cover
 One line each: what you decided, why, and the stage. The reviewer checks this list.
@@ -144,6 +149,14 @@ One line each: what you decided, why, and the stage. The reviewer checks this li
 - Storage location is resolved lazily and tests use TemporaryMediaMixin to prevent test uploads from polluting backend/private_media (Stage 5 repair).
 - apps/payments/permissions.py was created in Batch 1 outside that item's scope and reshaped into IsReceiptTeacherOrOwner in this batch (one permission class per rule, no inline duplicate) (Stage 5 repair).
 - Receipt endpoint OpenAPI 200 response documents binary schemas across application/pdf, image/png, and image/jpeg removing inaccurate application/json defaults (Stage 5 repair).
+- Stage 6 (a): Use `CourseSection`, `Lesson`, `LessonAsset`, `Topic`, `LessonTopic`, `Question`, `QuestionTopic`, `Exam`, `ExamQuestion`, `ExamAttempt`, `Answer` with section 5 table names and nested `TextChoices` (`Status`, `SourceType`, `QuestionType`, `Difficulty`, `AssetType`, `ExtractionStatus`, `ReviewStatus`) to match existing model conventions.
+- Stage 6 (b): All new FKs use `PROTECT` to preserve rows; reverse names equal the owning table except `Question.reviewed_by=reviewed_questions` and `ExamAttempt.reviewed_by=reviewed_exam_attempts`, avoiding clashes between two User FKs.
+- Stage 6 (c): Defaults are Question source_type=manual/status=draft/difficulty=medium, Exam status=draft, ExamAttempt status=in_progress/proctoring_review_status=clean, LessonAsset extraction_status=pending; Question points/question_type have no default to require explicit values. `created_at` uses `auto_now_add`; editable attempt `started_at` and answer `answered_at` use `timezone.now`. `correct_answer`, `options`, `selected_option` use JSONField for structured data; Topic.slug uses SlugField(150) for stable keys.
+- Stage 6 (d): `full_clean()` enforces non-negative points/points_override/score/max_score/points_awarded, max_attempts >= 1, and optional duration_minutes >= 1; validators only, no additional CheckConstraints, as requested for this skeleton.
+- Stage 6 (e): Meta.ordering is `["position", "id"]` for sections/lessons, `["-created_at", "id"]` for questions/exams, `["-started_at", "id"]` for attempts, and `["id"]` for every other new model, giving stable lists.
+- Stage 6 (f): Named UniqueConstraints enforce workspace/slug topics, lesson/topic, question/topic, exam/question, and attempt/question pairs; additionally exam/student/attempt_number is unique so the later quiz engine cannot duplicate an attempt number.
+- Stage 6 (g): Every new model with non-workspace FKs calls the shared validator for all of them, including student/reviewer; Lesson.section, Exam.lesson, and Question.lesson (when both scopes exist) must match the course, and attempt users must have student role. Validation stays in `clean()` without overriding `save()`, preserving explicit validation and scoped-query responsibilities.
+- Stage 6 (h): Admin lists keep id, title/name or identifying relations, workspace, and status where present, with workspace/status filters and search fields; extracted_text stays out of list views to keep review screens concise.
 
 ## 9. Deferred to later rounds
 
@@ -160,6 +173,7 @@ From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scrip
 Verify a stage: from `backend/` with virtualenv active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
 Stage 3 verification: 49 tests passed. Stage 4 verification: 97 tests passed.
 Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (231 tests passed).
+Stage 6 verification (Python 3.14.4), from `backend/`: `python manage.py migrate --noinput`; `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate --fail-on-warn` (no warnings); `python manage.py test --noinput --parallel 4` (346 passed; 231 before). Schema/docs GET 200; 22 source and 6 DB mutations caught/restored; private_media files 121 before/121 after, public_media 1 before/1 after; ai/proctoring have no migrations.
 
 ## 11. Known problems
 
@@ -177,6 +191,9 @@ Stage 5 verification from `backend/`: `python manage.py check`; `python manage.p
 - Unpublishing a course does not change existing enrollments and enrollments/me still lists them.
 - `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
 - Throttle counters are per-process until a shared cache is configured (see docs/deployment.md).
+- Stage 6 `clean()` runs in Django admin and `full_clean()`, not `objects.create()` or `save()`; future serializers must scope relation querysets (AGENTS.md section 6, pattern 2).
+- LessonAsset has no storage yet: storage_key is a plain CharField(500), with no upload, extraction, or serving implementation. Section 4's README-only placeholder wording is preserved as requested; the registered empty app packages are documented in section 6.
+- Receipt tests need write access to the system temporary directory; a restricted run raised PermissionError, while the final full suite passed with normal temporary-file access. No application change was needed.
 
 ## 12. Production deployment checklist
 

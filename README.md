@@ -1,6 +1,63 @@
 # Educational Platform Backend
 
-The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 5 adds courses, course enrollments, manual payment submissions, receipt verification, and real published course showcases.
+The backend is a Django, Django REST Framework, and PostgreSQL project. Stages 1–5 provide workspace accounts, courses, enrollments, and manual payments. Stage 6 adds content and assessment models, constraints, migrations, admin pages, and tests.
+
+## App layout and ownership
+
+Apps live under `backend/apps/`; project settings live under `backend/config/`.
+
+| App | Tables and responsibility |
+|---|---|
+| `workspaces` | `workspaces`; tenant configuration and shared workspace validation |
+| `accounts` | `users`; staff/student authentication and approval |
+| `public` | Safe public profiles and branding using workspace/account/course tables |
+| `courses` | `courses`, `course_sections`, `lessons`, `lesson_assets`; catalog and content skeleton |
+| `enrollments` | `course_enrollments`; course access and price snapshots |
+| `payments` | `payment_submissions`; manual claims, receipts, and review |
+| `assessments` | `topics`, `lesson_topics`, `questions`, `question_topics`, `exams`, `exam_questions`, `exam_attempts`, `answers`; assessment skeleton |
+| `ai` | Empty registered app owned by the AI teammate; deferred table contracts in its README |
+| `proctoring` | Empty registered app owned by the AI teammate; deferred event/evidence contracts in its README |
+
+Stage 6 has no endpoints and no uploads. `LessonAsset.storage_key` is a plain string; asset storage, extraction, and access are deferred. AI and proctoring have no models or migrations. Future proctoring events will reference `exam_attempts` in `assessments`.
+
+Model `clean()` validates related workspaces, content/course consistency, and the student role on attempts. It runs through Django admin forms and `full_clean()`, but not `objects.create()` or `save()`. Future serializers must retrieve relations from querysets scoped to the current workspace.
+
+When adding an authorized feature, implement its model, explicit serializer, permission, view, tests, and schema together; update `memory.md` with the verified behavior and reusable pieces. Follow the stage scope and design before adding endpoints to these skeleton tables.
+
+## Stage 6 mutation verification
+
+Final verification: 346 tests passed on fresh PostgreSQL test databases (231 before Stage 6). System and migration checks passed, schema validation had no warnings, and both `/api/schema/` and `/api/docs/` returned 200. Media file counts stayed unchanged: private_media 121 before/121 after; public_media 1 before/1 after. AI and proctoring have no migrations. `memory.md` grew from 183 to 200 lines and records all supplied decisions (a–h) in section 8.
+
+All 22 source mutations caused the expected test failures; each file was restored byte for byte before the next mutation. Every FK assertion was run separately (21 workspace assertions across 11 models). The six database constraints were also dropped individually within rolled-back test transactions: all six duplicate tests failed with `IntegrityError not raised`. Generated migrations were never edited. The table names one failing test per source mutation; multi-FK mutations failed every corresponding isolated test.
+
+| Rule | Temporary mutation | Failing test |
+|---|---|---|
+| CourseSection workspace | Remove shared-validator call | `test_section_rejects_a_course_from_another_workspace` |
+| Lesson workspace | Remove shared-validator call | `test_lesson_rejects_a_course_from_another_workspace` |
+| LessonAsset workspace | Remove shared-validator call | `test_asset_rejects_a_lesson_from_another_workspace` |
+| Topic workspace | Remove shared-validator call | `test_topic_rejects_cross_workspace_course` |
+| LessonTopic workspace | Remove shared-validator call | `test_lesson_topic_rejects_cross_workspace_topic` |
+| Question workspace | Remove shared-validator call | `test_question_rejects_cross_workspace_reviewer` |
+| QuestionTopic workspace | Remove shared-validator call | `test_question_topic_rejects_cross_workspace_topic` |
+| Exam workspace | Remove shared-validator call | `test_exam_rejects_cross_workspace_lesson` |
+| ExamQuestion workspace | Remove shared-validator call | `test_exam_question_rejects_cross_workspace_question` |
+| ExamAttempt workspace | Remove shared-validator call | `test_exam_attempt_rejects_cross_workspace_student` |
+| Answer workspace | Remove shared-validator call | `test_answer_rejects_cross_workspace_attempt` |
+| Lesson section/course | Remove consistency check | `test_lesson_rejects_a_section_in_another_course_of_the_same_workspace` |
+| Question lesson/course | Remove consistency check | `test_question_rejects_lesson_from_another_course` |
+| Exam lesson/course | Remove consistency check | `test_exam_rejects_lesson_from_another_course` |
+| Attempt student role | Remove role check | `test_exam_attempt_rejects_non_student` |
+| Topic workspace/slug uniqueness | Remove UniqueConstraint; separately drop DB constraint | `test_topic_slug_is_unique_within_workspace` |
+| Lesson/topic uniqueness | Remove UniqueConstraint; separately drop DB constraint | `test_lesson_topic_pair_is_unique` |
+| Question/topic uniqueness | Remove UniqueConstraint; separately drop DB constraint | `test_question_topic_pair_is_unique` |
+| Exam/question uniqueness | Remove UniqueConstraint; separately drop DB constraint | `test_exam_question_pair_is_unique` |
+| Exam/student/attempt-number uniqueness | Remove UniqueConstraint; separately drop DB constraint | `test_exam_attempt_number_is_unique_per_student_and_exam` |
+| Attempt/question uniqueness | Remove UniqueConstraint; separately drop DB constraint | `test_answer_question_is_unique_per_attempt` |
+| Question origin default | Change manual to ai_generated | `test_question_defaults_choices_and_field_types` |
+
+Content tests live in `backend/apps/courses/tests/test_content_models.py`; question-bank and exam tests live in `backend/apps/assessments/tests/test_question_models.py` and `test_exam_models.py`.
+
+Review `docs/backend-design.md`: Build Scope; section 1 AI policy; sections 5.4 and 5.7–5.23 (deferred AI/proctoring tables are contracts only); section 6; section 12 rules 24–25; section 14 Stage 6. No additional product decisions or unresolved design questions were needed.
 
 ## Requirements
 
@@ -37,10 +94,11 @@ Set-Location backend
 python manage.py migrate
 python manage.py check
 python manage.py makemigrations --check --dry-run
-python manage.py test
+python manage.py spectacular --validate
+python manage.py test --noinput --parallel 4
 ```
 
-Django's test runner creates and removes a temporary test database. The PostgreSQL role must be allowed to create databases.
+Django's test runner creates and removes temporary PostgreSQL test databases; `--parallel 4` uses Django's built-in runner with four workers. The PostgreSQL role must be allowed to create databases. Receipt fixtures also need write access to the system temporary directory; use a session that permits temporary-file creation.
 
 ## Create a Platform Admin
 
