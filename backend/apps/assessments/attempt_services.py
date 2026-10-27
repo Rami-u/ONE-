@@ -36,11 +36,15 @@ class AttemptStartError(Exception):
     """Raised when a student may not start an attempt; carries a message."""
 
 
+class AttemptSubmitError(Exception):
+    """Raised when an attempt cannot be submitted; carries a message."""
+
+
 @transaction.atomic
 def start_attempt(student, exam, workspace):
     """Start (or resume) the student's attempt on a published exam.
 
-    Returns (attempt, created, closed_expired). Returns (None, False, ...) when
+    Returns (attempt, created). Returns (None, False) when
     the student has no attempts left. The closing of an expired attempt is
     committed because this function returns instead of raising in that case.
 
@@ -62,7 +66,7 @@ def start_attempt(student, exam, workspace):
 
     now = timezone.now()
     attempts = list(
-        ExamAttempt.objects.select_for_update()
+        ExamAttempt.objects.select_for_update(of=("self",))
         .select_related("exam")
         .filter(workspace=workspace, exam=exam, student=student)
         .order_by("attempt_number")
@@ -96,10 +100,11 @@ def submit_attempt(attempt_id, student, workspace):
     """Finish the student's own in-progress attempt.
 
     Returns the attempt, or None if it does not exist for this student in this
-    workspace. Raises ValueError if it is already finished.
+    workspace. Raises AttemptSubmitError if it is already finished.
+    A late submit is recorded at the deadline, not at the current time.
     """
     attempt = (
-        ExamAttempt.objects.select_for_update()
+        ExamAttempt.objects.select_for_update(of=("self",))
         .select_related("exam")
         .filter(pk=attempt_id, workspace=workspace, student=student)
         .first()
@@ -107,8 +112,8 @@ def submit_attempt(attempt_id, student, workspace):
     if attempt is None:
         return None
     if attempt.status != ExamAttempt.Status.IN_PROGRESS:
-        raise ValueError("This attempt is already finished.")
-    _close_attempt(attempt, timezone.now())
+        raise AttemptSubmitError("This attempt is already finished.")
+    _close_attempt(attempt, min(timezone.now(), attempt_end_time(attempt)))
     return attempt
 
 

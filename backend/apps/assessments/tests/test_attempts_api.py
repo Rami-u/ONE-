@@ -256,6 +256,21 @@ class SubmitAttemptTests(AttemptApiBase):
         response = self.client.post(self.submit_url(attempt))
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_late_submit_is_recorded_at_the_deadline(self):
+        late = create_exam_attempt(
+            self.ws_a,
+            self.exam,
+            self.student,
+            attempt_number=1,
+            started_at=timezone.now() - timedelta(minutes=90),
+        )
+        self.client.force_login(self.student)
+        response = self.client.post(self.submit_url(late))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        late.refresh_from_db()
+        self.assertEqual(late.status, ExamAttempt.Status.SUBMITTED)
+        self.assertEqual(late.submitted_at, late.started_at + timedelta(minutes=60))
+
     def test_cannot_submit_another_students_attempt(self):
         attempt = self.start(self.student)
         self.client.force_login(self.other_student)

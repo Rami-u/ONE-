@@ -18,6 +18,7 @@ from .attempt_serializers import (
 )
 from .attempt_services import (
     AttemptStartError,
+    AttemptSubmitError,
     attempt_end_time,
     get_exam_for_start,
     remaining_seconds,
@@ -104,7 +105,7 @@ class SubmitAttemptView(WorkspaceSlugMixin, APIView):
     def post(self, request, slug, attempt_id):
         try:
             attempt = submit_attempt(attempt_id, request.user, self.workspace)
-        except ValueError as exc:
+        except AttemptSubmitError as exc:
             raise ValidationError({"detail": str(exc)}) from exc
         if attempt is None:
             raise NotFound("Attempt not found.")
