@@ -25,6 +25,7 @@ urlpatterns += [path("api/v1/", include("apps.courses.urls"))]
 urlpatterns += [path("api/v1/", include("apps.enrollments.urls"))]
 urlpatterns += [path("api/v1/", include("apps.payments.urls"))]
 urlpatterns += [path("api/v1/", include("apps.assessments.attempt_urls"))]
+urlpatterns += [path("api/v1/", include("apps.assessments.content_urls"))]
 urlpatterns += [
     path(
         "api/schema/",
