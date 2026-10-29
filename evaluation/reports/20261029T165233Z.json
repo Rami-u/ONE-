@@ -1,0 +1,181 @@
+{
+  "generated_at_utc": "2026-10-29T16:52:33.035153+00:00",
+  "sampling_interval_seconds": 1.0,
+  "processed_videos": 5,
+  "evaluated_video_seconds": 77.3,
+  "evaluated_video_hours": 0.021472222222222222,
+  "skipped_labeled_videos": [
+    "clip_02_look_away.mp4",
+    "clip_03_face_missing.mp4",
+    "clip_04_two_faces.mp4"
+  ],
+  "metrics": {
+    "face_missing": {
+      "TP": 1,
+      "FP": 1,
+      "FN": 0,
+      "precision": 0.5,
+      "recall": 1.0,
+      "false_alarms_per_student_hour": 46.57179818887452
+    },
+    "multiple_faces": {
+      "TP": 1,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_alarms_per_student_hour": 0.0
+    },
+    "looking_away": {
+      "TP": 1,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_alarms_per_student_hour": 0.0
+    },
+    "phone_detected": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "false_alarms_per_student_hour": 0.0
+    }
+  },
+  "ground_truth_events": {
+    "face_missing": 1,
+    "multiple_faces": 1,
+    "looking_away": 1,
+    "phone_detected": 0
+  },
+  "per_clip": {
+    "manual_face_missing_20261022.mp4": {
+      "duration_seconds": 17.75,
+      "counts": {
+        "face_missing": {
+          "TP": 1,
+          "FP": 0,
+          "FN": 0
+        },
+        "multiple_faces": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "looking_away": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "phone_detected": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        }
+      }
+    },
+    "manual_looking_away_01.mp4": {
+      "duration_seconds": 17.15,
+      "counts": {
+        "face_missing": {
+          "TP": 0,
+          "FP": 1,
+          "FN": 0
+        },
+        "multiple_faces": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "looking_away": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "phone_detected": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        }
+      }
+    },
+    "manual_looking_away_02.mp4": {
+      "duration_seconds": 12.85,
+      "counts": {
+        "face_missing": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "multiple_faces": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "looking_away": {
+          "TP": 1,
+          "FP": 0,
+          "FN": 0
+        },
+        "phone_detected": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        }
+      }
+    },
+    "manual_multiple_faces_01.mp4": {
+      "duration_seconds": 13.15,
+      "counts": {
+        "face_missing": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "multiple_faces": {
+          "TP": 1,
+          "FP": 0,
+          "FN": 0
+        },
+        "looking_away": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "phone_detected": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        }
+      }
+    },
+    "manual_normal_01.mp4": {
+      "duration_seconds": 16.4,
+      "counts": {
+        "face_missing": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "multiple_faces": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "looking_away": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        },
+        "phone_detected": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0
+        }
+      }
+    }
+  },
+  "group_columns": [],
+  "per_group": {}
+}

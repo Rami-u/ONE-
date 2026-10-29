@@ -2,6 +2,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from backend.vision.config import VisionConfig
 from backend.vision.face_detector import select_main_face_index
 from backend.vision.head_pose import extract_head_pose
 from backend.vision.pipeline import InvalidFrameError, decode_image_bytes
@@ -50,3 +51,11 @@ def test_pose_angles_stay_within_euler_range_at_wrap():
     result = extract_head_pose(SimpleNamespace(facial_transformation_matrixes=[matrix]))
     assert result["head_pitch"] is not None and -180.0 <= result["head_pitch"] <= 180.0
     assert result["head_yaw"] is not None and -180.0 <= result["head_yaw"] <= 180.0
+
+
+def test_critical_warning_attempt_supports_new_and_legacy_environment_names(monkeypatch):
+    monkeypatch.setenv("VISION_LOOKING_AWAY_TERMINATE_ATTEMPT", "4")
+    assert VisionConfig.from_env().looking_away_critical_warning_attempt == 4
+
+    monkeypatch.setenv("VISION_LOOKING_AWAY_CRITICAL_WARNING_ATTEMPT", "5")
+    assert VisionConfig.from_env().looking_away_critical_warning_attempt == 5

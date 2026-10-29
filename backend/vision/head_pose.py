@@ -1,6 +1,6 @@
-"""Head pose estimation (yaw and pitch) from MediaPipe transformation matrices."""
+"""Head pose estimation (yaw, pitch, and directional classification) from MediaPipe matrices."""
 
-from typing import Any, Optional, TypedDict
+from typing import Any, Literal, Optional, TypedDict
 import numpy as np
 from .config import DEFAULT_CONFIG
 
@@ -13,11 +13,51 @@ MIN_EULER_ANGLE_DEGREES: float = -180.0
 MAX_EULER_ANGLE_DEGREES: float = 180.0
 ANGLE_ROUNDING_DECIMALS: int = 2
 
+GazeDirection = Literal["forward", "left", "right", "up", "down", "unknown"]
+
 
 class HeadPoseResult(TypedDict):
     head_yaw: Optional[float]
     head_pitch: Optional[float]
     looking_away: bool
+    gaze_direction: GazeDirection
+    state: str
+    looking_down: bool
+
+
+def classify_gaze_direction(
+    yaw: Optional[float],
+    pitch: Optional[float],
+    yaw_threshold: float = DEFAULT_YAW_THRESHOLD,
+    pitch_up_threshold: float = DEFAULT_PITCH_UP_THRESHOLD,
+    pitch_down_threshold: float = DEFAULT_PITCH_DOWN_THRESHOLD,
+) -> GazeDirection:
+    """Classify the head orientation into a discrete direction."""
+    if yaw is None or pitch is None:
+        return "unknown"
+
+    # Check if within normal forward bounds
+    if (
+        abs(yaw) <= yaw_threshold
+        and pitch_down_threshold <= pitch <= pitch_up_threshold
+    ):
+        return "forward"
+
+    # Determine dominant deviation if multiple thresholds are crossed
+    yaw_excess = max(0.0, abs(yaw) - yaw_threshold)
+    pitch_up_excess = max(0.0, pitch - pitch_up_threshold)
+    pitch_down_excess = max(0.0, pitch_down_threshold - pitch)
+
+    # The preview is mirrored like a selfie camera. MediaPipe's yaw/pitch signs
+    # describe the unmirrored camera coordinate frame, so report directions from
+    # the student's point of view in the preview.
+    if yaw_excess >= pitch_up_excess and yaw_excess >= pitch_down_excess and yaw_excess > 0:
+        return "left" if yaw > 0 else "right"
+    if pitch_down_excess >= pitch_up_excess and pitch_down_excess > 0:
+        return "up"
+    if pitch_up_excess > 0:
+        return "down"
+    return "forward"
 
 
 def _is_orientation_looking_away(
@@ -49,6 +89,9 @@ def extract_head_pose(
             "head_yaw": None,
             "head_pitch": None,
             "looking_away": False,
+            "gaze_direction": "unknown",
+            "state": "unknown",
+            "looking_down": False,
         }
 
     if face_index < 0 or face_index >= len(matrices):
@@ -74,9 +117,21 @@ def extract_head_pose(
         pitch_up_threshold=pitch_up_threshold,
         pitch_down_threshold=pitch_down_threshold,
     )
+    rounded_yaw = round(yaw, ANGLE_ROUNDING_DECIMALS)
+    rounded_pitch = round(pitch, ANGLE_ROUNDING_DECIMALS)
+    direction = classify_gaze_direction(
+        yaw=rounded_yaw,
+        pitch=rounded_pitch,
+        yaw_threshold=yaw_threshold,
+        pitch_up_threshold=pitch_up_threshold,
+        pitch_down_threshold=pitch_down_threshold,
+    )
 
     return {
-        "head_yaw": round(yaw, ANGLE_ROUNDING_DECIMALS),
-        "head_pitch": round(pitch, ANGLE_ROUNDING_DECIMALS),
+        "head_yaw": rounded_yaw,
+        "head_pitch": rounded_pitch,
         "looking_away": bool(is_looking_away),
+        "gaze_direction": direction,
+        "state": "normal" if direction == "forward" else direction,
+        "looking_down": direction == "down",
     }

@@ -4,7 +4,7 @@ The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 5 
 
 ## Requirements
 
-- Python 3.14
+- Python 3.11.9
 - PostgreSQL 15 or newer
 
 ## Local setup (PowerShell)
@@ -12,12 +12,16 @@ The backend is a Django, Django REST Framework, and PostgreSQL project. Stage 5 
 Run these commands from the repository root:
 
 ```powershell
-py -3.14 -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python --version
+python -m pip install -r requirements.txt
 python -m pip install -r backend\requirements.txt
+python -m pip install pytest==9.1.1
 Copy-Item backend\.env.example backend\.env
 ```
+
+Confirm that `python --version` prints `Python 3.11.9` before installing packages. The Vision requirements install the OpenCV contrib package (which includes the regular OpenCV modules); do not install `opencv-python` alongside it.
 
 Edit `backend\.env` and set a private `DJANGO_SECRET_KEY` and your PostgreSQL password. The example sets `DJANGO_SESSION_COOKIE_SECURE=False` for local HTTP development. Keep it `True` in production. Development uses Django's console email backend. In production, set `DJANGO_DEBUG=False`, configure `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, and `DEFAULT_FROM_EMAIL`, and set `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend` (or omit `EMAIL_BACKEND` to use the SMTP default when debug is off). Workspace logos are JPEG, PNG, or WebP images up to 2 MB; development serves these from `backend\public_media` at `/media/`. Private uploads belong under `backend\private_media` and are not served directly.
 
@@ -41,6 +45,22 @@ python manage.py test
 ```
 
 Django's test runner creates and removes a temporary test database. The PostgreSQL role must be allowed to create databases.
+
+Vision tests run separately from the Django suite:
+
+```powershell
+Set-Location ..
+python -m pytest -q
+python -m evaluation.evaluate --interval 1
+```
+
+`evaluation.evaluate` analyzes the recorded clips in `evaluation/clips/` and writes JSON and Markdown reports to `evaluation/reports/`. It does not open the webcam. To preview a recorded video with the live HUD, run this from the repository root:
+
+```powershell
+python -m backend.vision.probe "evaluation/clips/manual_looking_away_02.mp4"
+```
+
+For a live webcam only after the recorded-video check, run `python -m backend.vision.probe` and press `q` or `Esc` in the preview window to stop it. The preview shows the current state (such as `NORMAL` or `LOOKING RIGHT`) instead of `None`. Direction labels are from the student's point of view in the mirrored preview. Every detected non-normal gaze direction (left, right, up, or down), a second face, and a phone that remains detected use a five-second continuous timer. The alarm sounds when that timer ends. Each incident increments the same counter, shown as `Warnings: 1/3`; the third warning is critical and keeps the exam open. A bundled MediaPipe EfficientDet-Lite0 model checks each frame for the COCO `cell phone` class with a 0.60 confidence threshold; small, obscured, blurred, or angled phones may score below that threshold. The preview shows the best phone-class score and candidate dimensions; it draws a box only when the score meets the phone threshold. The displayed warning follows the active condition: when the student faces forward, removes the extra face, or the phone is no longer detected, the HUD immediately returns to the current face/gaze state while keeping the warning count. Proctoring notifications include an `audio_cue` for a future student-facing web client. The repository currently has no frontend, so the local alarm is heard on the machine running the preview.
 
 ## Create a Platform Admin
 

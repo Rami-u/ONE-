@@ -140,3 +140,9 @@ def test_gap_closes_short_unopened_run_without_phantom_event():
     assert builder.update(create_frame_signals(face_missing=True), 60.0) == []
     assert builder.events == []
     assert builder.gaps == [(0.0, 60.0)]
+
+
+def test_from_state_reads_legacy_looking_away_attempt_setting():
+    builder = EventBuilder.from_state({"looking_away_terminate_attempt": 4})
+
+    assert builder.looking_away_critical_warning_attempt == 4

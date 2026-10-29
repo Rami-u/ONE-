@@ -1,183 +1,138 @@
-# memory.md - Project memory for the coding agent
+# memory.md - ذاكرة المشروع الشاملة (Project & AI Vision Proctoring Memory)
 
-**Read this file first, at the start of every session.** Map and current state of the project.
-It is **not a copy of the design** and **not a log of everything done**: keep it short (about 200 lines at most) and rewrite entries instead of appending forever. Update at the end of every stage in the same commit as code. If this file and code disagree, the code is right.
+**اقرأ هذا الملف أولاً في بداية كل جلسة تعديل.**
+يحتوي هذا الملف على الخريطة الكاملة للمشروع (منصة التعليم + نظام المراقبة الذكي بالـ Computer Vision `backend/vision/`) عشان لما تطلب أي تعديل مستقبلاً نرجعله فوراً من غير ما نقرأ الكود كله من الصفر.
 
 ---
 
-## 1. The project in five lines
+## 1. ملخص المشروع بالكامل (Overview)
 
-- A multi-tenant educational platform: each teacher has a workspace on their own sub-domain.
-- Backend only for now: Django + Django REST Framework + PostgreSQL, session authentication.
-- Roles: Platform Admin (no workspace), teacher, student (assistant is planned, not active).
-- Flow: admin creates a teacher and workspace, students register and wait for approval, then enroll in free or paid courses (manual payment confirmed by the teacher).
-- AI quiz generation, mistake analysis, and proctoring are planned for later and are **not built** in this round.
+المشروع عبارة عن جزئين متكاملين في نفس الـ Repository:
+1. **منصة تعليمية متعددة المدرسين (Multi-Tenant Educational Platform Backend):**
+   - مبنية بـ Django + Django REST Framework + PostgreSQL.
+   - كل مدرس ليه Workspace خاص بيه (Subdomain) بيدير فيه الكورسات، تسجيل الطلاب، والموافقة على المدفوعات.
+2. **نظام المراقبة الذكي للامتحانات بالذكاء الاصطناعي (`backend/vision/` - Cheat Vision Proctoring):**
+   - بيشتغل بـ OpenCV + MediaPipe Face Landmarker (`face_landmarker.task`) + NumPy.
+   - بيستقبل فريمات الكاميرا من الطالب أثناء الامتحان، ويحلل:
+     - عدد الوجوه (`face_count`) وتحديد الطالب الأساسي (أكبر وجه والأقرب للمنتصف).
+     - زوايا الرأس (`head_yaw` يمين/شمال، و `head_pitch` فوق/تحت) وتصنيف اتجاه النظر (`gaze_direction`: `forward`, `left`, `right`, `up`, `down`).
+     - تحويل الإشارات اللحظية إلى أحداث زمنية (`EventBuilder`) وتطبيق قوانين الامتحان الذكية حسب تخصص المدرس ونوع السؤال.
 
-## 2. Files and when to read them
+---
 
-| File | What it is | When to read |
+## 2. خريطة ملفات نظام الـ Vision والـ AI (أهم الملفات للتعديل السريع)
+
+| الملف | وظيفته الأساسية | أهم الدوال والـ Classes جواه |
 |---|---|---|
-| `memory.md` | This file: map, status, decisions | Every session, first |
-| `AGENTS.md` | Rules, patterns, definition of done | Every session, completely |
-| `docs/backend-design.md` | The full design | Only the sections named in your prompt |
-| `README.md` | How to run, test, add a feature | When setting up or finishing a stage |
-| `backend/.env.example` | Every environment variable | When touching settings |
-| `docs/review-checklist.md` | Checklist for the human reviewer of a stage | Only if the prompt names it |
-| `docs/open-questions.md` | Decisions the team has not made yet | Only if the prompt names it |
-| `docs/deployment.md` | Production deployment checklist | Only when preparing a deployment |
+| `backend/vision/config.py` | إعدادات الـ Vision والمهل الزمنية وعدد التحذيرات | `VisionConfig`, `DEFAULT_CONFIG` (`looking_away_grace_s=5.0`, `multiple_faces_duration_s=5.0`, `phone_detected_duration_s=5.0`, `looking_away_critical_warning_attempt=3`) |
+| `backend/vision/exam_context.py` | تحديد تخصص المدرس (مادة علمية vs نظرية) ونوع السؤال وقرارات المدرس | `ExamContext`, `resolve_subject_category`, `allows_extended_looking_down()`, `effective_looking_down_grace_s()` |
+| `backend/vision/head_pose.py` | حساب زوايا الرأس (Yaw/Pitch) وتحديد اتجاه النظر بدقة | `extract_head_pose()`, `classify_gaze_direction()` (`forward`, `left`, `right`, `up`, `down`), `looking_down` |
+| `backend/vision/face_detector.py` | عد الوجوه، اختيار وجه الطالب الأساسي، وعمل Blur لأي وجه تاني | `select_main_face_index()`, `extract_face_counts()`, `extract_face_bboxes()`, `blur_secondary_faces()`, `blur_secondary_faces_in_video()` |
+| `backend/vision/event_builder.py` | المحرك الزمني للأحداث والإنذارات وسياسات الامتحان | `EventBuilder`, `Rule`, `ProctoringNotification`, `get_proctoring_status()`, `update()`, `flush()` |
+| `backend/vision/pipeline.py` | نقطة الدخول لتحليل الفريمات وإدارة الجلسات مع التظليل (Blur) | `analyze_frame()`, `analyze_frame_with_privacy()`, `process_session_frame()`, `finish_session()` |
+| `backend/vision/session_store.py` | حفظ حالة جلسة الطالب (In-Memory أو Redis) مع Locks لمنع التداخل | `InMemorySessionStore`, `RedisSessionStore`, `get_session_store()` |
+| `backend/vision/worker.py` | تشغيل الـ Inference في `ProcessPoolExecutor` مع إسقاط الفريمات القديمة | `FrameWorker`, `BackpressureError`, `StaleFrameError` |
+| `backend/vision/probe.py` | أداة المعايرة والاختبار الحي بالكاميرا أو الفيديو مع عرض الـ HUD والـ Blur | `inspect_frame()`, `draw_hud()`, `main()` |
+| `backend/vision/phone_detector.py` | كشف فئة COCO `cell phone` محلياً بموديل MediaPipe EfficientDet-Lite0 int8، بحد ثقة 0.60 | `detect_phone()`, `get_phone_detector()` |
+| `backend/vision/audio_alert.py` | توليد جرس تحذير محلي غير متزامن باستخدام `sounddevice` | `play_alarm()` |
+| `evaluation/evaluate.py` | تقييم أداء الموديل على الفيديوهات المسجلة في `evaluation/clips/` | `evaluate_dataset()`, `run_pipeline_on_video()` |
+| `tests/test_proctoring_rules.py` | اختبارات شاملة لكل القواعد الذكية والمهل والـ Blur وسياق المواد | اختبارات اتجاه النظر والوجه الإضافي لمدة 5 ثوانٍ، والعداد المشترك حتى 3 تحذيرات، والرياضيات مقابل النظري |
 
-## 3. Design index: which section answers what
+---
 
-| Question | Section |
-|---|---|
-| What is in and out of this round? | Build Scope (top of the design), section 15 |
-| Roles and what each may do | 2, 9.6 |
-| User flows | 4.1 directory, 4.2 teacher onboarding, 4.3 students, 4.4 enrollment and payment |
-| Fields, choices, constraints of a table | 5.x (one subsection per table) |
-| How tables relate | 6.1 |
-| Endpoints and who may call them | 7.1 public, 7.2 student auth, 7.3 staff auth, 7.4 admin, 7.5 workspace and students, 7.6 courses, 7.7 payments, 7.9 out of scope |
-| Request and response examples | 8.x |
-| Authentication, permissions, tenant isolation, isolation tests | 9.1-9.7 |
-| App layout | 10.1 |
-| Business rules that must never break | 12 |
-| Sub-domains and local development | 13 |
-| Stage order and what each stage contains | 14 |
-| Decisions already made | 15 |
+## 3. القواعد الذكية المطبقة حالياً في الموديل (Business & Proctoring Logic)
 
-## 4. Scope reminder
+### أ. قاعدة النظر في اتجاه غير طبيعي (`looking_away` - يمين / شمال / فوق / تحت)
+- **المهلة (Grace Period):** `5.0` ثوانٍ (`looking_away_grace_s = 5.0`). لو الطالب بص بعيد ورجع قبل 5 ثواني لا يُحسب عليه إنذار.
+- **نظام التحذيرات المشترك:** بعد 5 ثوانٍ متواصلة خارج الاتجاه الطبيعي، يصدر `LOOKING_AWAY_WARNING` مع صوت تحذير ويزيد العداد المعروض على الـ HUD (`Warnings: 1/3`). العودة للاتجاه الطبيعي تصفّر مؤقت الاستمرار، لا عداد التحذيرات. التحذير الثالث من أي نوع يصبح حرجًا (`*_FINAL_WARNING`) والامتحان يظل مفتوحًا.
 
-- **Built this round:** Stages 1-5 working with tests; Stage 6 as models-only skeleton.
-- **Not built, do not add:** frontend, deployment, AI generation, mistake analysis, proctoring, assistant permissions, email verification, online payments, refunds, endpoints for sections, lessons, assets, and assessments.
-- **Placeholders:** `apps/ai/` and `apps/proctoring/` are empty (README only).
+### ب. قاعدة ظهور أكثر من وجه في الكادر (`multiple_faces >= 2`)
+- يبدأ المؤقت عند ظهور وجه إضافي، ولا يُرسل تحذير إلا إذا استمر وجوده **5 ثوانٍ متواصلة** (`multiple_faces_duration_s = 5.0`). عودة عدد الوجوه إلى واحد تصفّر المؤقت. التحذير يستخدم العداد المشترك نفسه، والثالث حرج ولا يغلق الامتحان. لا يوجد تحذير فوري ولا إغلاق تلقائي بعد 10 ثوانٍ؛ إعداد `multiple_faces_exit_deadline_s` للتوافق القديم فقط.
+- **عزل وتظليل الوجه الإضافي (Blurring) والتركيز على الطالب الأساسي:**
+  - دالة `select_main_face_index` بتختار وجه الطالب الأساسي (الأكبر حجماً والأقرب لمنتصف الكاميرا) وتفضّل مركزة معاه هو بس في حساب زوايا الرأس (`head_yaw`, `head_pitch`) والـ Landmarks.
+  - دالة `blur_secondary_faces` (ودالة `blur_secondary_faces_in_video` للفيديوهات) بتعمل Gaussian Blur قوي على كل الوجوه التانية في الفريم أو الفيديو مع الحفاظ على وجه الطالب الأساسي واضح تماماً.
 
-## 5. Status
-Update the row of the stage you worked on. Statuses: `not started`, `in progress`, `done - awaiting review`, `merged`.
+### ج. سياق الامتحان والنظر (`ExamContext`)
+- يقبل المحرك بيانات المادة والسؤال (`teacher_subject`, `question_type`, `requires_hand_solving`, `is_static_or_formula`, `teacher_solving_time_limit_s`) لمعلومات السياق.
+- قاعدة التنبيه الحالية التي طلبها المستخدم: أي حالة نظر مصنفة كاتجاه غير `normal` (يمين/شمال/فوق/تحت) تبدأ مؤقتًا مدته 5 ثوانٍ، حتى أثناء حل الرياضيات. يعرض الـ HUD الحالة الفعلية (مثل `LOOKING RIGHT`) بدل `None`، ويعرض عداد التحذيرات المشترك. أول تحذيرين عاديان والثالث حرج؛ لا يُغلق الامتحان.
+- مهلة النظر لأسفل القديمة المرتبطة بحل المسائل ما زالت ممثلة في مساعدات `ExamContext` وإعداداتها، لكنها لا تغيّر مؤقت التنبيه الحالي داخل `EventBuilder`.
 
-| Stage | Content | Status | Branch | Reviewer |
-|---|---|---|---|---|
-| 1 | Bootstrap, workspaces, accounts | merged (PR #1) | stage-1-fixes | - |
-| 2 | Teacher onboarding, staff login | merged (PR #2; hardening PR #3) | stage-2-teacher-onboarding; stage-2-hardening | - |
-| 3 | Public showcase, workspace settings | merged (PR #5) | stage-3-public-showcase | - |
-| 4 | Student registration, login, approval | done - awaiting review | stage-4-student-auth | - |
-| 5 | Courses, enrollment, manual payments | done - awaiting review | stage-5-courses-payments | - |
-| 6 | Content and assessment skeleton | not started | - | - |
+---
 
-## 6. Repository map
-Fill this in as apps are created. One row per app, kept to one line each.
+## 4. خريطة تطبيقات الـ Backend (Django Apps)
 
-| App | Responsibility | Key models | Endpoints (prefix `/api/v1/`) | Stage |
-|---|---|---|---|---|
-| workspaces | Tenant configuration and identity; admin workspace lifecycle | `Workspace` | Admin workspace list/detail/suspend/activate (`admin/workspaces/`) | 2 |
-| accounts | Custom identity, teacher onboarding, staff and student auth, student review | `User` | Admin teacher management; staff/student auth; workspace students/review (`workspaces/{slug}/...`) | 2–4 |
-| public | Safe teacher directory, profiles, branding, and teacher workspace settings | `Workspace` (uses `User` for teacher display name) | Public teacher directory/profile; workspace branding/public-profile/settings | 3 |
-| courses | Workspace course catalog, teacher course authoring, student list | `Course` | Workspace courses list/create/retrieve/update (`workspaces/{slug}/courses/`) | 5 |
-| enrollments | Course enrollment lifecycle, price snapshots, and content access | `CourseEnrollment` | Course enroll, my enrollments (`workspaces/{slug}/courses/.../enroll/`, `enrollments/me/`) | 5 |
-| payments | Manual payment claims, receipts, review, and enrollment activation | `PaymentSubmission` | Submit claim, list, view receipt, confirm, reject (`workspaces/{slug}/payments/`) | 5 |
+| App | المسؤولية | أهم الموديلات | الـ Stage |
+|---|---|---|---|
+| `workspaces` | إعدادات الـ Tenant (مساحة كل مدرس والـ Subdomain واللوجو) | `Workspace` | 1–3 |
+| `accounts` | حسابات المدرسين والطلاب والـ Admin وتسجيل الدخول والموافقات | `User` | 2–4 |
+| `public` | عرض دليل المدرسين والبروفايل العام | `Workspace` | 3 |
+| `courses` | إنشاء وإدارة الكورسات لكل مدرس | `Course` | 5 |
+| `enrollments` | اشتراكات الطلاب في الكورسات وصلاحية الوصول للمحتوى | `CourseEnrollment` | 5 |
+| `payments` | رفع إيصالات الدفع اليدوي ومراجعة المدرس لها | `PaymentSubmission` | 5 |
+| `ai` / `proctoring` | مجلدات جاهزة للربط مع `backend/vision/` في المرحلة القادمة | - | 6 |
 
-## 7. Reusable building blocks
-The patterns the team will copy. Record where each one lives so nobody rewrites it.
+---
 
-| Name | Location | Use it for |
-|---|---|---|
-| Workspace slug validator | `backend/apps/workspaces/validators.py` | Enforce normalized slug syntax and reserved names |
-| Workspace slug immutability | `backend/apps/workspaces/models.py` | Reject slug changes after creation |
-| User manager and login key derivation | `backend/apps/accounts/managers.py`, `backend/apps/accounts/models.py` | Create workspace accounts and Platform Admins; derive normalized login keys |
-| Teacher/workspace onboarding transaction and invitation mail | `backend/apps/accounts/services.py` | Atomically create teacher/workspace; send invitation after commit; resend/reset password links |
-| Platform Admin, teacher, approved-student, and workspace-member permissions | `backend/apps/accounts/permissions.py` | Check role, approval state, workspace ownership, and active workspace status |
-| Workspace slug resolvers | `backend/apps/accounts/permissions.py` | `ActiveWorkspaceSlugMixin` keeps the Stage 2 suspended message; `WorkspaceSlugMixin` uses `Workspace is unavailable.` for public and Stage 4 routes |
-| Staff password token and API routes | `backend/apps/accounts/tokens.py`, `backend/apps/accounts/urls.py`, `backend/apps/accounts/views.py` | Expiring, single-use password tokens; teacher login and password setup/reset |
-| Shared login-key construction | `backend/apps/accounts/identity.py` | Build a normalized workspace-scoped login key consistently in model saves and staff login |
-| Client-IP throttling | `backend/apps/accounts/views.py`, `backend/apps/accounts/student_views.py`, `backend/config/settings.py`, `backend/.env.example` | Reuse `ClientIPRateThrottle` for staff and student auth; set trusted proxy count with `DRF_NUM_PROXIES` (default 0) |
-| Environment-driven email delivery, token expiry, and safe email error helpers | `backend/config/settings.py`, `backend/apps/accounts/services.py`, `backend/.env.example` | Configure console/SMTP delivery and `PASSWORD_RESET_TIMEOUT_SECONDS` (default 259200); `safe_email_exception_message` redacts links, tokens, and passwords from email errors, and `password_reset_expiry_sentence` provides shared expiry wording for future email flows. New emails must reuse these helpers instead of copying them. |
-| Workspace teacher/student role permissions | `backend/apps/accounts/permissions.py` | `IsWorkspaceTeacher`, `IsApprovedStudent`, and `IsWorkspaceMember` enforce active workspace and tenant membership |
-| Student auth serializers and views | `backend/apps/accounts/student_serializers.py`, `backend/apps/accounts/student_views.py` | Safe registration, login, session, CSRF, `me`, and password reset API contracts |
-| Student review service and endpoints | `backend/apps/accounts/services.py`, `backend/apps/accounts/student_review_views.py` | Lock and scope a pending student, record reviewer and time, and notify after commit |
-| Account test helpers and Stage 4 coverage | `backend/apps/accounts/tests/helpers.py`, `backend/apps/accounts/tests/test_student_*.py` | Create workspace accounts; cover student auth, isolation, permissions, throttling, review, and schemas |
-| Safe public response serializers and logo validation/storage | `backend/apps/public/serializers.py`, `backend/apps/workspaces/image_validators.py`, `backend/apps/workspaces/storage.py` | Restrict showcase fields; validate public JPEG/PNG/WebP logos and store uploads separately from private media |
-| Public showcase endpoint tests | `backend/apps/public/tests/test_public_api.py` | Cover visibility, search, pagination, safe fields, workspace scoping, settings, and logo validation |
-| Active enrollment permission | `backend/apps/enrollments/permissions.py` | `HasActiveEnrollment` verifies active student course enrollment before granting course content access |
-| Course catalog permission | `backend/apps/courses/permissions.py` | `IsWorkspaceTeacherOrApprovedStudent` allows approved teachers and students to view catalog |
-| Course enrollment and payment services | `backend/apps/enrollments/services.py`, `backend/apps/payments/services.py` | Idempotent student course enrollment; atomic payment claim submission, review, and enrollment activation |
-| Receipt access permission | `backend/apps/payments/permissions.py` | `IsReceiptTeacherOrOwner` checks active workspace, teacher role or owning student for receipts |
-| Private receipt storage and file validator | `backend/apps/payments/storage.py`, `backend/apps/payments/validators.py` | Store receipts privately with no public URL; validate JPEG/PNG/PDF files up to 5 MB |
-| Temporary media test mixin | `backend/apps/payments/tests/helpers.py` | `TemporaryMediaMixin` isolates media uploads to a clean temporary directory during test runs |
-| Course, enrollment, payment test helpers | `backend/apps/courses/tests/helpers.py`, `backend/apps/enrollments/tests/helpers.py`, `backend/apps/payments/tests/helpers.py` | Create courses, enrollments, and payment submissions for test suites |
+## 5. إزاي تشغل وتختبر التعديلات بسرعة
 
-## 8. Decisions the design did not cover
-One line each: what you decided, why, and the stage. The reviewer checks this list.
+- تشغيل كل اختبارات الـ Vision والقواعد الجديدة:
+  `python -m pytest -q`
+- تجربة فيديو مسجل قبل الكاميرا:
+  `python -m backend.vision.probe "evaluation/clips/manual_looking_away_02.mp4"`
+- بعد نجاح تجربة الفيديو، تشغيل الكاميرا بسياق مادة ومسألة رياضية:
+  `python -m backend.vision.probe --subject رياضيات --question-type mcq --hand-solving --solving-limit 60`
 
-- Workspace slugs use 3–63 lowercase letters/digits joined by single hyphens; additionally reserve `auth`, `accounts`, `dashboard`, `billing`, `docs`, `help`, `cdn`, `assets`, and `files` to keep common service subdomains unavailable to workspaces (Stage 1).
-- Stage 1 stored workspace logos as nullable URL references; Stage 3 changes the field to `ImageField` and stores new uploads in a separate public media directory as requested.
-- New accounts default to pending approval; the user manager marks teacher, assistant, and Platform Admin accounts approved on creation.
-- Exact dependencies are pinned to Django 6.0.8, DRF 3.17.2, drf-spectacular 0.30.0, psycopg 3.3.6, and django-environ 0.14.0 for the Python 3.14.4 environment and documented framework compatibility.
-- Password reset completion uses the staff set-password endpoint with the same `uid`, token, and new password shape; the design specifies no separate finish-reset route (Stage 2).
-- Invitation and reset hosts are built from `PLATFORM_URL_SCHEME` and `PLATFORM_BASE_DOMAIN` (defaults `https` and `edunova.com`) so the design's example domain is configurable (Stage 2).
-- Invitation links target the workspace's `/teacher/set-password/` frontend route and carry `uid` and token as query parameters; the frontend submits them to the API (Stage 2).
-- Staff auth throttle rates are 5 login attempts/minute, 3 password-reset starts/hour, and 5 set-password attempts/hour per client IP; the design requires throttling but does not specify rates (Stage 2).
-- DRF throttling uses `SimpleRateThrottle.get_ident`; `DRF_NUM_PROXIES=0` ignores forwarded IP headers, and deployments set it to the known trusted proxy count. Email expiry is displayed as an upper-bound whole number of days so the text remains accurate for non-whole-day timeout values (Stage 2 hardening).
-- `Pillow==12.3.0` is pinned for Stage 3 image validation and supports the project's Python 3.14 environment.
-- Logo uploads use `backend/public_media` with `/media/` routing enabled only in development; `PublicLogoStorage.url()` returns legacy absolute logo URLs unchanged so existing Stage 2 references remain readable.
-- Suspended branding, public-profile, and workspace settings requests return 403 with `Workspace is unavailable.`; unknown workspace slugs return 404 so the frontend can distinguish unavailable workspaces from missing ones. Logo PATCH requests use multipart form data for file uploads.
-- `COMPONENT_SPLIT_REQUEST=True` in `SPECTACULAR_SETTINGS` separates multipart logo upload schemas from JSON request schemas for accurate API documentation (Stage 3).
-- Student reset email subject is `Reset your student password`; its body says `Use this link to set or reset your password. It expires within N day(s):` followed by the `/reset-password/` URL, reusing Stage 2 expiry wording. Start response is `If the account exists, a reset link has been sent.`; confirmation reuses the staff details `Password has been set.` and `Invalid or expired password link.` (Stage 4).
-- Approval mail subject/body are `Your student account was approved` and `Your account for {workspace} has been approved. You can now sign in.` Rejection mail uses `Your student account was rejected` and `Your account for {workspace} was rejected. Reason: {reason}` (Stage 4; exact copy was unspecified).
-- Duplicate student registration returns a field error on `email` with a workspace-specific duplicate message; the design specifies rejection and status but not the response wording (Stage 4).
-- Rejected student login uses the message `Your account was rejected.` and returns the saved `rejection_reason`; the design requires the state and reason but leaves the message text open (Stage 4).
-- Student auth serializers use the requested names `email`, `password`, `full_name`, and the safe `me` fields; review serializers use the listed student fields exactly, with no privileged additions (Stage 4).
-- phone is optional at registration; design 5.2 defines the field, 8.1 does not show it (Stage 4).
-- Swagger UI uses drf-spectacular's documented string-valued `SWAGGER_UI_SETTINGS` to add `X-CSRFToken` from the same-host cookie for unsafe requests (Stage 4).
-- The Swagger UI request interceptor guards `request.method` because it also runs for the schema request; without the guard `/api/docs/` failed to load in the browser (Stage 4, commit d2bc620).
-- `ENUM_NAME_OVERRIDES` in `SPECTACULAR_SETTINGS` resolves OpenAPI enum naming collisions for `status` across Workspace, CourseEnrollment, and PaymentSubmission without warnings (Stage 5).
-- In-progress payment claims return 409 Conflict when submitting a second claim for the same enrollment or when reviewing an already-reviewed claim; the design specifies state verification but leaves the HTTP error code open (Stage 5).
-- Course enrollment endpoint returns 201 Created on initial enrollment and 200 OK on duplicate enrollment with existing enrollment details (Stage 5).
-- Receipt file storage strips client filenames to &lt;uuid4 hex&gt;.&lt;ext&gt; based on detected content type, and authorized receipt retrieval serves them via FileResponse with nosniff, fixed MIME types (pdf, jpg, jpeg, png inline; fallback application/octet-stream), and private no-store Cache-Control (Stage 5).
-- Receipt validator restricts image decoding to formats=["JPEG", "PNG"], enforces MAX_RECEIPT_PIXELS=25M, and catches all Pillow exceptions to return 400 instead of 500 for corrupt files (Stage 5 repair).
-- PaymentSubmissionAdmin displays read-only boolean has_receipt and excludes receipt_image so the Django admin change page does not crash on private file fields (Stage 5 repair).
-- CourseQuerysetMixin defines both get_queryset and get_permissions (POST/PATCH requires IsWorkspaceTeacher; GET allows IsWorkspaceTeacherOrApprovedStudent) to centralize course access rules in one place (Stage 5 repair).
-- Non-teacher attempts to create or update courses return DRF's standard 403 permission denied message rather than a custom response to adhere to project error response patterns (Stage 5 repair).
-- Course enrollment and payment claim submission handle concurrent race conditions by locking rows and catching database IntegrityError inside savepoints to return 200/409 instead of 500 (Stage 5 repair).
-- HasActiveEnrollment fails closed by returning False when a student's course_id cannot be resolved and removes the pk fallback so unassociated requests cannot bypass content authorization (Stage 5 repair).
-- The ai/proctoring README placeholders were added during Stage 5, ahead of Stage 6, which will replace them, to keep the repository layout consistent with scope rules (Stage 5).
-- Course price is required on create in CourseCreateUpdateSerializer without a serializer default so teachers make an explicit pricing decision on creation (Stage 5 repair).
-- Payment claim note and payment rejection reason enforce a 1000-character limit to prevent unbounded text storage while leaving ample room for user input (Stage 5 repair).
-- Invalid status query parameters on GET /payments/ return 400 Bad Request matching GET /students/ to keep staff review endpoint filters consistent (Stage 5 repair).
-- Storage location is resolved lazily and tests use TemporaryMediaMixin to prevent test uploads from polluting backend/private_media (Stage 5 repair).
-- apps/payments/permissions.py was created in Batch 1 outside that item's scope and reshaped into IsReceiptTeacherOrOwner in this batch (one permission class per rule, no inline duplicate) (Stage 5 repair).
-- Receipt endpoint OpenAPI 200 response documents binary schemas across application/pdf, image/png, and image/jpeg removing inaccurate application/json defaults (Stage 5 repair).
+- أداة المعاينة تستخدم موديل الهاتف المرفق `backend/vision/efficientdet_lite0_int8.tflite` وتصدر جرسًا محليًا على الجهاز عند وصول تنبيه. استجابة `process_session_frame()` تحمل `audio_cue` للربط المستقبلي بواجهة الطالب.
+- تشغيل التقييم على الفيديوهات في `evaluation/clips/`:
+  `python -m evaluation.evaluate --interval 1`
 
-## 9. Deferred to later rounds
+---
 
-- Endpoints for course sections, lessons, and lesson assets (the design has none yet).
-- Exam-taking endpoints and the rule that exam access needs an active enrollment.
-- AI question generation, mistake analysis, and proctoring.
-- Assistant permissions.
-- React frontend and sub-domain deployment.
-- Email verification, refunds, receipt retention, online payments.
+## 6. مراجعة حالة المستودع (2026-10-29)
 
-## 10. How to run
-From the repository root in PowerShell: `py -3.14 -m venv .venv`; `.\.venv\Scripts\Activate.ps1`; `python -m pip install -r backend\requirements.txt`; `Copy-Item backend\.env.example backend\.env`; `psql -U postgres -c "CREATE DATABASE educational_platform;"`; `Set-Location backend`; `python manage.py migrate`; `python manage.py createsuperuser`; `python manage.py runserver`.
+### صورة النظام
+- مجلد `backend/` يحتوي على مشروع Django وواجهات REST لمنصة تعليم متعددة المدرسين: مساحات المدرسين، الحسابات والموافقات، الدليل العام، الكورسات، التسجيلات، ومطالبات الدفع اليدوي.
+- `backend/vision/` يحتوي على خط معالجة مستقل لإطارات الصور: فك الصورة، اكتشاف الوجوه، تقدير وضع الرأس، بناء أحداث زمنية، إدارة حالة الجلسات، وتقييم المقاطع.
+- لا يوجد Frontend في الشجرة التي تمت مراجعتها. تطبيقات `backend/apps/ai/` و`backend/apps/proctoring/` تحتوي README توضيحيًا فقط؛ ولا يوجد ربط API بينهما وبين `backend/vision/` ظاهر في الملفات التي راجعناها.
+- الإطار البرمجي المقصود للمنصة هو Django/DRF مع PostgreSQL. إعدادات التشغيل في `backend/config/`، ووصف الاستخدام في `README.md`.
 
-Verify a stage: from `backend/` with virtualenv active, run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py spectacular --validate`, and `python manage.py test`.
-Stage 3 verification: 49 tests passed. Stage 4 verification: 97 tests passed.
-Stage 5 verification from `backend/`: `python manage.py check`; `python manage.py makemigrations --check --dry-run`; `python manage.py spectacular --validate` (no warnings); `python manage.py test` (231 tests passed).
+### الموجود والمرحّل
+- موجود في الكود: مسارات المنصة للمدرس والطالب، إدارة مساحة المدرس، الكورسات والتسجيلات، الدفع اليدوي والتحقق من الإيصالات، وأدوات معالجة/تقييم الـ Vision. لكل مجال ملفات واختبارات ظاهرة في `backend/apps/*/tests/` و`tests/`.
+- مرحّل بوضوح: الواجهة الأمامية، توليد المحتوى وتحليل الأخطاء بالذكاء الاصطناعي، وربط أحداث الـ Vision بواجهات Django.
+- كشف الهاتف صار يستخدم EfficientDet-Lite0 وفئة COCO `cell phone` بحد ثقة 0.60، مع مهلة ثبات 5 ثوانٍ. لا يوجد مقطع هاتف موسوم في بيانات التقييم؛ نجاح الكشف الإيجابي ودقته على مقاطع طلاب ما زالا غير متحققين، والموديل لا يثبت أن الهاتف ممسوك بيد الطالب.
+- كشف الهاتف يعتمد على مظهر الهاتف المرئي؛ الحجم الصغير أو الحجب أو الزاوية أو الضبابية والإضاءة قد تخفض الثقة عن 0.60. لا تخفض العتبة قبل إضافة عينات هاتف موجبة وسلبية حتى لا تزيد الإنذارات الكاذبة.
+- اتجاهات `classify_gaze_direction()` متحولة لتطابق منظور الطالب في معاينة السيلفي المعكوسة؛ قيم yaw/pitch الرقمية نفسها تظل زوايا MediaPipe الخام. هذا التغيير يحتاج تأكيداً عملياً على كاميرا المستخدم.
+- لا يوجد Frontend في المستودع. الـ probe يشغل الجرس على جهاز تشغيله، أما `audio_cue` في استجابة Backend فيحتاج واجهة طالب متصلة كي يسمع الطالب التنبيه من متصفحه.
+- بوابات تقييم الـ Vision موجودة في `evaluation/gates.yaml` لكن قيمها `TODO_SET_BY_HUMAN`؛ لا توجد معايير نجاح معتمدة بعد.
+- لا يوجد دليل هنا على تشغيل كاميرا حية أو جاهزية نشر إنتاجية. راجع `docs/PRODUCTION_PLAN.md` و`docs/deployment.md` للنواقص والخطوات المرحّلة.
 
-## 11. Known problems
+### ما تم التحقق منه في جلسة المراجعة
+- المعتمد هو Python 3.11.9. ملفات الاعتماديات وREADME أصبحت متوافقة معه: Django 5.2.18 وDRF 3.16.1 للـ Backend، وOpenCV contrib 5.0.0.93 وNumPy 2.4.6 للـ Vision. Django 5.2 يدعم Python 3.11 وفق [جدول دعم Django الرسمي](https://docs.djangoproject.com/en/5.2/faq/install/).
+- بعد إصلاح الحزم المختلطة في بيئة Python 3.11.9، `python -m pytest -q` نجح: 44 اختبارًا في آخر تشغيل. `python -m pip check` كان نظيفًا في المراجعة السابقة.
+- `python manage.py check` نجح بلا مشاكل باستخدام مفتاح مؤقت. فحص migrations واختبارات Django لم يكتمل لأن PostgreSQL وملف `.env` غير مهيئين في بيئة المراجعة.
+- تقييم الفيديو المسجل `manual_looking_away_02.mp4` اكتشف حدث النظر بعيدًا (TP=1, FP=0, FN=0 ضمن هذا المقطع). فتح ملف الفيديو في `probe` نجح وظهر أول تنبيه عند 11.1 ثانية. هذه عينة واحدة وليست إثباتًا لدقة عامة.
+- التقييم الأخير شغّل 5 من أصل 8 مقاطع؛ ثلاثة ملفات موسومة غير موجودة (`clip_02_look_away.mp4`, `clip_03_face_missing.mp4`, `clip_04_two_faces.mp4`). ظهر `multiple_faces` بـ TP=0 وFN=1 لأن المقطع الإيجابي الموجود موسوم لمدة 4 ثوانٍ فقط، بينما السياسة تتطلب 5 ثوانٍ مستمرة؛ يلزم استكمال بيانات الوسم قبل الحكم على السياسة. ظهر `phone_detected` بـ TP=0 وFP=0 وFN=0 لعدم وجود مقاطع هاتف موجبة؛ هذا لا يثبت الاستدعاء الإيجابي. `face_missing` ما زال TP=1 وFP=1.
+- أمر `git status` فشل لأن مجلد المشروع الحالي لا يحتوي على مستودع Git؛ لا توجد حالة تعديلات يمكن تأكيدها عبر Git في هذه النسخة.
+- يوجد ملفا ذاكرة متطابقان: `memory.md` و`backend/vision/memory.md`. حدّثهما معًا لحين توحيد مصدر الذاكرة.
 
-- Local development sets `DJANGO_SESSION_COOKIE_SECURE=False` in `backend/.env.example` for HTTP `runserver`; production must keep it `True`. If unset, the setting defaults to `True`.
-- The `/teacher/set-password/` invitation/reset destination is a frontend route; this backend stage supplies the API but does not build the frontend page.
-- Stage 5 and later permissions must check workspace status. Suspension blocks later requests but does not revoke sessions already issued.
-- Password-reset responses have the same body for known and unknown emails, but response time can still reveal account existence because email is sent in the request; move reset email delivery to a background task later.
-- Development serves logos only when `DEBUG=True`; production needs a web server mapping `/media/` to `backend/public_media`.
-- Replacing a workspace logo does not delete the old file, so orphan logo files accumulate; this is known and not fixed here.
-- Old receipt files stay on disk after a rejected claim is resubmitted.
-- A claim submission that loses a race on the unique constraint can leave an unreferenced receipt file on disk.
-- The PDF check is signature-only.
-- The JPEG check validates only the header (Pillow verify() does nothing for JPEG), so a truncated JPEG with a valid header is accepted.
-- apps/workspaces/image_validators.py (Stage 3) catches only (UnidentifiedImageError, OSError, ValueError), but corrupt uploads (such as PNG without IDAT or minimal DDS) on the logo endpoint return 400 because DRF's ImageField parser catches them first; Stage 3 is not being retroactively modified because its branch is merged.
-- Unpublishing a course does not change existing enrollments and enrollments/me still lists them.
-- `MEDIA_URL="/media/"` while `MEDIA_ROOT` remains `backend/private_media`; only `backend/public_media` is served. Stage 5 receipts must use their own private storage and the authorized endpoint, never `.url` or `MEDIA_URL`.
-- Throttle counters are per-process until a shared cache is configured (see docs/deployment.md).
+### مشاكل مؤكدة / أولويات المتابعة
+1. إعداد PostgreSQL و`backend/.env` لتشغيل اختبارات Django وفحص migrations.
+2. إضافة مقاطع موسومة للملفات الثلاثة المفقودة وتوسيع بيانات التقييم قبل الاستناد إلى مقاييس الدقة.
+3. ربط `backend/vision/` بتطبيق Proctoring في Django مؤجل؛ لا توجد دورة امتحان متكاملة من API حتى الآن.
+4. تحديد بوابات `evaluation/gates.yaml` يدويًا بعد جمع بيانات كافية.
+5. جمع مقاطع موسومة بهاتف داخل اليد وخارجها، وضبط حد كشف الهاتف بناءً على النتائج؛ كشف الموديل الحالي لا يثبت أن الهاتف ممسوك.
+6. مراجعة أسئلة `docs/open-questions.md` (إعادة فتح حساب الطالب المرفوض، ومخزن مشترك لحدود الطلبات) قبل النشر.
 
-## 12. Production deployment checklist
+## 7. قاعدة سجل التغييرات
+- أضف هنا سطرًا مؤرخًا يصف أي تغيير كود أو اعتماد أو قرار، مع الملفات المتأثرة ونتيجة التحقق.
+- لو لم تُشغّل الفحوصات، اكتب ذلك صراحةً واذكر السبب؛ لا تسجل ميزة على أنها تعمل اعتمادًا على وجود ملفها فقط.
+- نسخة الذاكرة في `backend/vision/memory.md` مرآة لهذا الملف حاليًا، لذلك يجب إبقاؤهما متزامنين.
 
-See docs/deployment.md.
+### سجل التغييرات
+- 2026-10-29: عدّلنا حالة الهاتف لتستمر أثناء كشفه فقط، ويبدأ صوت/إنذار الهاتف بعد 5 ثوانٍ من الكشف المتواصل. عاد الـ HUD للحالة الحية فور انتهاء النظر بعيدًا/الوجه الإضافي/كشف الهاتف مع بقاء العداد. تُرسم مربعات الهاتف المقبولة فقط عند ثقة 0.60 فأكثر؛ مرشحات أقل من الحد تعرض الدرجة والأبعاد دون مربع. التحقق: 44 اختبارًا ناجحًا على Python 3.11.9 وإعادة تشغيل فيديو النظر المسجل. ما زال يلزم مثال للآلة الحاسبة إذا صنفها الموديل بدرجة 0.60 أو أعلى لضبط تمييزها.
+- 2026-10-29: قلب تسمية اتجاهات yaw وpitch لتطابق اتجاه الطالب في معاينة السيلفي، وتوثيق معيار كشف الهاتف (فئة COCO `cell phone`، ثقة 0.60، وثبات 0.25 ثانية) وسبب تفاوت الكشف. `python -m pytest -q`: 41 passed على Python 3.11.9. التحقق البصري على الكاميرا ما زال مطلوباً؛ عتبة الهاتف لم تتغير لعدم توفر عينات مناسبة للمعايرة.
+- 2026-10-29: تثبيت العداد المشترك في الـ HUD وإظهار الحالة الحالية بدل `None`، مع تحذير صوتي بعد استمرار اتجاه نظر غير طبيعي أو وجه إضافي 5 ثوانٍ. الهاتف يستخدم العداد نفسه. التحقق على Python 3.11.9: `python -m pytest -q` (41 passed)؛ معاينة فيديو النظر المسجل أطلقت أول تحذير عند 11.1 ثانية. التقييم 5/8؛ مقطع الوجه الإضافي الموسوم أقصر من المهلة المطلوبة (4 ثوانٍ)، وثلاثة ملفات موسومة غير موجودة. لم تُفتح كاميرا حية.
+- 2026-10-29: إعادة لون حالة النظر إلى الأحمر، وربط `state` غير الطبيعي بمؤقت موحد 5 ثوانٍ لكل الاتجاهات بما فيها النظر لأسفل، وإضافة كاشف هاتف EfficientDet-Lite0 مع تنبيه أحمر و`audio_cue` وجرس مولد محلي في `probe`. التحقق: 39 اختبارًا ناجحًا، `pip check` نظيف، مخرج الصوت بدأ بنجاح، ومعاينة الفيديو المسجل أطلقت أول تنبيه عند 11.1 ثانية. تقييم 5/8 مقاطع بلا عينة هاتف موجبة؛ واجهة الطالب غير موجودة، لذلك الصوت الحالي محلي في أداة المعاينة فقط.
+- 2026-10-29: إبراز أول إنذارين في الـ HUD بالبرتقالي والثالث بالأحمر، وتوضيح عنوان معاينة الفيديو مقابل الكاميرا. تحقق: `python -m pytest -q` (33 passed) وتشغيل فيديو `manual_looking_away_02.mp4` حتى نهايته.
+- 2026-10-29: تغيير المحاولة الثالثة من إغلاق الامتحان إلى إنذار حرج مستمر، وإضافة لافتة HUD واختبارها؛ إصلاح فتح ملفات الفيديو في `probe`، وتحديث Python إلى 3.11.9 وأوامر README والاعتماديات. التحقق: 33 اختبار Vision، فحص Django الأساسي، وتقييم/معاينة فيديو مسجل. اختبار Django الكامل ما زال ينتظر قاعدة PostgreSQL.
+- 2026-10-29: إضافة مراجعة بنية المشروع وحالته الفعلية، ونواقص التكامل، ومشكلة بيئة الاختبارات. لم يتغير كود المنتج؛ فحص الاختبارات تعطل أثناء الجمع بسبب Python/الاعتماديات الموضحة أعلاه.
