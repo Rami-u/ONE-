@@ -1,4 +1,4 @@
-from functools import wraps
+﻿from functools import wraps
 
 from django.conf import settings
 from django.contrib import admin
@@ -27,6 +27,7 @@ urlpatterns += [path("api/v1/", include("apps.payments.urls"))]
 urlpatterns += [path("api/v1/", include("apps.assessments.attempt_urls"))]
 urlpatterns += [path("api/v1/", include("apps.assessments.content_urls"))]
 urlpatterns += [path("api/v1/", include("apps.assessments.question_urls"))]
+urlpatterns += [path("api/v1/", include("apps.assessments.exam_urls"))]
 urlpatterns += [
     path(
         "api/schema/",
