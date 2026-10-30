@@ -107,6 +107,8 @@ REST_FRAMEWORK = {
         "student_login": "5/minute",
         "student_password_reset": "3/hour",
         "student_password_reset_confirm": "5/hour",
+        "proctoring_frame": "120/minute",
+        "proctoring_browser_event": "30/minute",
     },
     # Trust forwarded client IPs only when the deployment has configured its
     # exact number of trusted reverse proxies. Zero ignores X-Forwarded-For.
@@ -173,4 +175,12 @@ CSRF_COOKIE_HTTPONLY = False
 PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT_SECONDS", default=259200)
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS", default=["https://*.edunova.com"]
+)
+
+# Proctoring integration. "fake" is the default and needs no extra libraries.
+PROCTORING_VISION_BACKEND = env("PROCTORING_VISION_BACKEND", default="fake")
+PROCTORING_FRAME_MAX_BYTES = env.int("PROCTORING_FRAME_MAX_BYTES", default=500 * 1024)
+PROCTORING_FRAME_MAX_PIXELS = env.int("PROCTORING_FRAME_MAX_PIXELS", default=4_000_000)
+PROCTORING_EVIDENCE_RETENTION_DAYS = env.int(
+    "PROCTORING_EVIDENCE_RETENTION_DAYS", default=30
 )
