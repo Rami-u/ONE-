@@ -1,0 +1,179 @@
+@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+/*
+  وجهة — design tokens (D:\WEGHA\DESIGN.md)
+
+  Semantic CSS variables carry the light/dark values; @theme inline maps them to
+  Tailwind utilities (bg-page, bg-surface, text-ink, text-accent, bg-accent-soft,
+  border-line, ...). Dark mode is a .dark class on <html>, applied by the inline
+  script in index.html before React mounts.
+*/
+
+:root {
+  /* Surfaces */
+  --surface-page: #f6f8f9; /* student/teacher portal canvas */
+  --surface-landing: #fcfcf9; /* warm marketing + registration canvas */
+  --surface-section: #eff4ef; /* "how it works" section */
+  --surface: #ffffff; /* cards, forms, dialogs */
+  --surface-soft: #edf5f1; /* grouped information */
+  --surface-raised: #ffffff; /* hover/elevated */
+  --border-color: #e3eae6;
+
+  /* Text */
+  --text: #203c48;
+  --text-secondary: #7e9293;
+  --text-muted: #879297;
+
+  /* Accent (teal) */
+  --accent: #16827e;
+  --accent-contrast: #ffffff;
+  --accent-soft: #eaf5f0;
+  --primary-soft: #eaf5f0;
+
+  /* Focus (stronger than the reference #65bfb5 to meet the 3:1 outline rule) */
+  --focus-ring: #65bfb5;
+
+  /* Semantic pairs (light) */
+  --success-fg: #328d79;
+  --success-bg: #ecf6ef;
+  --warning-fg: #b69558;
+  --warning-bg: #fbf6e9;
+  --error-fg: #b65353;
+  --error-bg: #f7ecea;
+  --error-form: #b25550;
+
+  /* Marketing brand panel */
+  --brand-panel: #183f43;
+  --brand-panel-fg: #ffffff;
+
+  /* Subject accent pairs for course covers (foreground / background) */
+  --tile-teal-fg: #218b7b;
+  --tile-teal-bg: #eaf5f0;
+  --tile-blue-fg: #698bb2;
+  --tile-blue-bg: #edf2fa;
+  --tile-sand-fg: #bb9a61;
+  --tile-sand-bg: #faf4e8;
+  --tile-purple-fg: #9a87be;
+  --tile-purple-bg: #f1eef8;
+
+  /* Elevation */
+  --elevation-card: 0 8px 20px #203c4808;
+  --elevation-raised: 0 14px 45px #203c481a;
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  color-scheme: light;
+}
+
+.dark {
+  --surface-page: #0d191f;
+  --surface-landing: #0d191f;
+  --surface-section: #15252d;
+  --surface: #15252d;
+  --surface-soft: #1c3037;
+  --surface-raised: #20353d;
+  --border-color: #2a3d44;
+
+  --text: #e4eeeb;
+  --text-secondary: #b0c2bc;
+  --text-muted: #91a8a2;
+
+  --accent: #78cfb6;
+  --accent-contrast: #092d2a;
+  --accent-soft: #1c3936;
+  --primary-soft: #1c3936;
+
+  --focus-ring: #90ddc5;
+
+  /* Semantic pairs (dark) — warning/danger from the reference; success reuses the accent pair ("success-adjacent emphasis"). */
+  --success-fg: #78cfb6;
+  --success-bg: #1c3936;
+  --warning-fg: #e6c48a;
+  --warning-bg: #3b3427;
+  --error-fg: #f0aaa3;
+  --error-bg: #3e2a2c;
+  --error-form: #f0aaa3;
+
+  --brand-panel: #173b3e;
+  --brand-panel-fg: #e4eeeb;
+
+  --tile-teal-fg: #78cfb6;
+  --tile-teal-bg: #1c3936;
+  --tile-blue-fg: #9db8d8;
+  --tile-blue-bg: #233246;
+  --tile-sand-fg: #ddbd8b;
+  --tile-sand-bg: #3a3427;
+  --tile-purple-fg: #bbabd8;
+  --tile-purple-bg: #2e2a40;
+
+  --elevation-raised: 0 14px 45px #0005;
+
+  color-scheme: dark;
+}
+
+/* Map semantic variables to Tailwind utilities. */
+@theme inline {
+  --color-page: var(--surface-page);
+  --color-landing: var(--surface-landing);
+  --color-section: var(--surface-section);
+  --color-surface: var(--surface);
+  --color-soft: var(--surface-soft);
+  --color-raised: var(--surface-raised);
+  --color-line: var(--border-color);
+  --color-ink: var(--text);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success-fg);
+  --color-success-bg: var(--success-bg);
+  --color-warn: var(--warning-fg);
+  --color-warn-bg: var(--warning-bg);
+  --color-err: var(--error-fg);
+  --color-err-bg: var(--error-bg);
+  --color-err-form: var(--error-form);
+  --color-panel: var(--brand-panel);
+  --color-panel-fg: var(--brand-panel-fg);
+  --color-focus: var(--focus-ring);
+
+  /* Radius: small controls 7px, cards 11px, major panels/dialogs 15px, pills for filters */
+  --radius-control: 7px;
+  --radius-card: 11px;
+  --radius-panel: 15px;
+  --radius-pill: 9999px;
+
+  /* Shadows: hover/elevated only — resting cards rely on borders */
+  --shadow-card: var(--elevation-card);
+  --shadow-elevated: var(--elevation-raised);
+
+  --font-sans: "Tajawal", sans-serif;
+}
+
+body {
+  @apply bg-page font-sans text-ink antialiased;
+  line-height: 1.8; /* Arabic reading rhythm */
+  letter-spacing: 0; /* natural tracking for body text; the hero applies its own */
+}
+
+/* Keyboard focus: visible everywhere, 3px outline with a 3–4px offset.
+   Uses the accent color (4.6:1 on white) rather than the too-light reference focus tone. */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Reduced motion: keep every interaction, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
