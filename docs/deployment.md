@@ -24,6 +24,45 @@ Not configurable from `.env` yet: run `DJANGO_DEBUG=False ... python manage.py c
 
 Shared cache for throttling (pre-deployment TODO): the default cache is per process, so throttle limits multiply by the number of workers. The recommended fix is Django `DatabaseCache` with `python manage.py createcachetable`; Redis is an alternative and needs approval to add a dependency. A reverse-proxy limit on login routes complements DRF throttling but does not replace it; `DRF_NUM_PROXIES` must also be correct. See README's “Production: shared cache for throttling” subsection.
 
-`backend/requirements.txt` has no WSGI server or static-file package; deployment needs `collectstatic` and a web server for `/static/`.
+`backend/requirements.txt` has no WSGI server; running Django in production needs an application server such as `waitress` or `gunicorn` (a package addition that needs team approval).
 
-Map `/media/` to `backend/public_media` in the production web server.
+## Serving the React frontend (single origin)
+
+The React app in `frontend/` is the same product on the main domain and every teacher sub-domain. The simplest production shape is **one origin**: Django serves the built SPA itself, so the API, session cookies, admin, and UI all live on one domain and no CORS configuration is needed anywhere.
+
+Setup on the server:
+
+1. On the build machine, produce the frontend bundle with the real domain baked in:
+
+   ```
+   cd frontend
+   VITE_PLATFORM_BASE_DOMAIN=<your-domain> npm run build
+   ```
+
+   `VITE_PLATFORM_BASE_DOMAIN` is read at build time and compiled into the JS, so it must be the production domain (`edunova.com`), not `localhost`. The output lands in `frontend/dist/`.
+
+2. Point Django at it in `backend/.env`:
+
+   ```
+   FRONTEND_DIST=frontend/dist
+   ```
+
+3. Run `python manage.py collectstatic` so the Django admin assets exist in `backend/staticfiles/`.
+
+With `FRONTEND_DIST` set, `backend/config/urls.py` (see `backend/config/spa.py`) serves:
+
+| Path | Source | Caching |
+|---|---|---|
+| `/api/v1/…`, `/api/schema/`, `/api/docs/`, admin path | Django apps (unchanged) | — |
+| `/static/…` | `backend/staticfiles` (admin assets) | by Django `static` serve |
+| `/media/…` | `backend/public_media` (workspace logos) | by Django `static` serve |
+| `assets/…` files in the bundle, e.g. `/assets/index-*.js` | `frontend/dist` hashed bundle files | 1 year, immutable |
+| everything else (GET) | `frontend/dist/index.html` — the client router picks the screen | no-cache |
+
+Non-GET requests to unknown paths answer `405`, unknown `/api/…` still answers `404`, and dist paths are checked to stay inside the dist tree, so the catch-all cannot read anything outside it.
+
+DNS: point `<domain>` and the wildcard `*.<domain>` A records at the server; TLS must cover the wildcard too. Workspace links that emails generate come from `PLATFORM_BASE_DOMAIN`.
+
+This serving mode is deliberately dependency-free (no white-noise/nginx requirement). For high-traffic deployments, offload `/assets/`, `/static/`, and `/media/` to a reverse proxy or CDN in front of Django using the same path table above; Django then keeps serving the API and `index.html`.
+
+Alternative shape: host the SPA separately (e.g. static hosting with sub-domain routing) and reverse-proxy `/api/v1` to Django; keep `CSRF_TRUSTED_ORIGINS`, `DJANGO_ALLOWED_HOSTS`, and `PLATFORM_BASE_DOMAIN` aligned so cookies remain first-party. All shapes above rely on the SPA being reached through the workspace sub-domains, because the slug is read from `window.location.hostname`.

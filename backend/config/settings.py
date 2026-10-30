@@ -147,6 +147,20 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "private_media"
 MEDIA_URL = "/media/"
+
+# Optional single-origin deployment: point FRONTEND_DIST at the built React
+# app (repo-relative or absolute) and Django will also serve it. Relative
+# paths are resolved against the repository root so that frontend/dist works.
+_FRONTEND_DIST = env.str("FRONTEND_DIST", default="")
+if _FRONTEND_DIST:
+    _FRONTEND_PATH = Path(_FRONTEND_DIST)
+    FRONTEND_DIST = (
+        _FRONTEND_PATH
+        if _FRONTEND_PATH.is_absolute()
+        else (BASE_DIR.parent / _FRONTEND_PATH)
+    ).resolve()
+else:
+    FRONTEND_DIST = None
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 EMAIL_BACKEND = env(
