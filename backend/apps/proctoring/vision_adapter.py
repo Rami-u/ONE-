@@ -9,7 +9,8 @@ from datetime import datetime
 
 from django.conf import settings
 
-
+class InvalidFrameError(ValueError):
+    """Raised when the uploaded image cannot be analysed."""
 @dataclass
 class DetectedEvent:
     event_type: str
