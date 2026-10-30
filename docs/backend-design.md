@@ -539,8 +539,6 @@ Confirmation activates the enrollment in the same transaction. Rejection leaves 
 
 ### 5.9 `topics`
 
-> **Skeleton only this round (Stage 6):** model + constraints + migration + admin registration + constraint tests. No serializers, views, or URLs.
-
 | Field | Type / rule | Purpose |
 |---|---|---|
 | `id` | Primary key | Topic identifier |
@@ -552,7 +550,7 @@ Confirmation activates the enrollment in the same transaction. Rejection leaves 
 
 ### 5.10 `lesson_topics`
 
-> **Skeleton only this round (Stage 6):** model + constraints + migration + admin registration + constraint tests. No serializers, views, or URLs.
+> **Written through the API and seed only:** no dedicated endpoints of its own.
 
 Join table between lessons and topics; unique on `(lesson_id, topic_id)`.
 
@@ -587,8 +585,6 @@ Tracks asynchronous AI question-generation or analysis work.
 
 ### 5.12 `questions`
 
-> **Skeleton only this round (Stage 6):** model + constraints + migration + admin registration + constraint tests. No serializers, views, or URLs.
-
 A reusable question, either manually authored or AI-generated. AI output remains a draft until teacher review.
 
 | Field | Type / rule | Purpose |
@@ -610,9 +606,20 @@ A reusable question, either manually authored or AI-generated. AI output remains
 | `reviewed_at` | Nullable timestamp | Review time |
 | `created_at` | Timestamp | Creation time |
 
+**`options` and `correct_answer` formats by `question_type`.** The API validates these and stores them in a normalized form.
+
+| `question_type` | `options` | `correct_answer` |
+|---|---|---|
+| `mcq` | List of 2 to 6 objects `{"id": "...", "text": "..."}` | The `id` of exactly one option (single answer) |
+| `true_false` | `null` | A boolean (`true` or `false`) |
+| `short` | `null` | A list of 1 to 10 accepted answer strings |
+| `essay` | `null` | Optional; `null` is stored as an empty string |
+
+For `short` questions, answers are compared after normalization: surrounding whitespace is stripped, runs of inner whitespace are collapsed to one space, and the text is lowercased. The normalizer is `normalize_short_answer` in `question_validation.py`, reserved for grading later. `question_type` and `status` cannot be changed through `PATCH`; they return 400. Students never receive `correct_answer` or `explanation`.
+
 ### 5.13 `question_topics`
 
-> **Skeleton only this round (Stage 6):** model + constraints + migration + admin registration + constraint tests. No serializers, views, or URLs.
+> **Written through the API and seed only:** no dedicated endpoints of its own.
 
 Join table between questions and topics; unique on `(question_id, topic_id)`.
 
@@ -641,8 +648,6 @@ Links a generation job to its output question and optional lesson or exam contex
 
 ### 5.15 `exams`
 
-> **Skeleton only this round (Stage 6):** model + constraints + migration + admin registration + constraint tests. No serializers, views, or URLs.
-
 | Field | Type / rule | Purpose |
 |---|---|---|
 | `id` | Primary key | Exam identifier |
@@ -659,9 +664,9 @@ Links a generation job to its output question and optional lesson or exam contex
 | `published_at` | Nullable timestamp | Publication time |
 | `created_at` | Timestamp | Creation time |
 
-### 5.16 `exam_questions`
+**`passing_score` rule.** `passing_score` is a percentage from 0 to 100 (two decimal places), not a raw point total. It is optional (`null` means no pass threshold). It is meant to be compared with the student's score as a percentage of the exam's total points; grading is not built yet, so this comparison is the design rule, not running behavior. Students never see `passing_score` in the exam list.
 
-> **Skeleton only this round (Stage 6):** model + constraints + migration + admin registration + constraint tests. No serializers, views, or URLs.
+### 5.16 `exam_questions`
 
 Join table between exams and questions; unique on `(exam_id, question_id)`.
 
@@ -675,8 +680,6 @@ Join table between exams and questions; unique on `(exam_id, question_id)`.
 | `points_override` | Nullable `decimal(5,2)` | Exam-specific point value |
 
 ### 5.17 `exam_attempts`
-
-> **Skeleton only this round (Stage 6):** model + constraints + migration + admin registration + constraint tests. No serializers, views, or URLs.
 
 | Field | Type / rule | Purpose |
 |---|---|---|

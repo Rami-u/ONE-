@@ -116,6 +116,46 @@ python manage.py runserver
 
 The local example disables the Secure cookie flag so browser sessions work over `runserver`'s plain HTTP. Production must set `DJANGO_SESSION_COOKIE_SECURE=True`; the setting also defaults to `True` when unset.
 
+## Seeding demo data (development only)
+
+`seed_demo_data` fills a development database with a demo chemistry workspace so the exam content API can be tried by hand. It runs only when `DEBUG` is true and refuses to run otherwise. It does not touch proctoring or AI tables.
+
+Run it from `backend` with the virtual environment active:
+
+```powershell
+python manage.py seed_demo_data --password "choose-a-demo-password"
+```
+
+You can also set the password in the `DEMO_USER_PASSWORD` environment variable instead of passing `--password`. The password is never printed.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--password` | none | Password for the demo teacher and students |
+| `--workspace-slug` | `demo-chem` | Slug of the demo workspace |
+| `--students` | `5` | Number of demo students |
+
+The command creates:
+
+- Workspace `demo-chem` ("Demo Chemistry", active).
+- Teacher `teacher@demo.local` and approved students `student1@demo.local`, `student2@demo.local`, and so on, each with an active enrollment in the course.
+- A published course, "Organic Chemistry 101", with sections, lessons, topics, and 24 approved questions.
+- Three exams:
+
+| Exam | Duration | Max attempts | Proctoring | State |
+|---|---|---|---|---|
+| Quiz 1: Alkanes and Alkenes | 20 min | 2 | off | published |
+| Midterm: Aromatic compounds | 30 min | 1 | on | published (passing score 60) |
+| Draft exam | 15 min | 1 | off | draft, so publishing can be tested by hand |
+
+The command is idempotent: running it again reuses existing records and skips an exam that already exists without changing it. It prints a summary of the emails and exams when it finishes.
+
+### Trying it by hand
+
+1. Sign in as a student at `POST /api/v1/workspaces/demo-chem/auth/login/`, or as the teacher at `POST /api/v1/workspaces/demo-chem/staff/auth/login/`. Session `POST` requests also need the CSRF token (see "Trying session endpoints by hand" below).
+2. List exams with `GET /api/v1/workspaces/demo-chem/exams/`. Students see only published exams; the teacher also sees the draft.
+3. Start an attempt with `POST /api/v1/workspaces/demo-chem/exams/<id>/attempts/start/`. For Quiz 1 the body is `{}`. The Midterm has proctoring enabled, so its body must be `{"consent": true}`.
+4. As the teacher, publish the draft with `POST /api/v1/workspaces/demo-chem/exams/<id>/publish/`.
+
 ## API documentation
 
 Set `DJANGO_ENABLE_API_DOCS=True` to enable `GET /api/schema/` and `GET /api/docs/`. The example environment enables them for development. Set it to `False` to make both paths return 404.
