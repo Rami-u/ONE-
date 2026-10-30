@@ -31,6 +31,12 @@ def _close_attempt(attempt, when):
     attempt.submitted_at = when
     attempt.save(update_fields=["status", "submitted_at"])
 
+    if attempt.exam.proctoring_enabled:
+        from apps.proctoring.services import finish_proctoring_safely
+
+        attempt_id = attempt.id
+        transaction.on_commit(lambda: finish_proctoring_safely(attempt_id))
+
 
 class AttemptStartError(Exception):
     """Raised when a student may not start an attempt; carries a message."""
