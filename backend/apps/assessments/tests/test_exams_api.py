@@ -213,15 +213,24 @@ class ExamIsolationAndAccessTests(ExamApiBase):
                 response = getattr(self.client, method)(url, {}, format="json")
                 self.assertIn(response.status_code, (401, 403))
 
-    def test_students_are_403_for_now(self):
-        for student in (self.approved_student, self.pending_student):
-            self.login(student)
-            for method, url in (
-                ("get", self.list_url()),
-                ("post", self.list_url()),
-                ("get", self.detail_url(self.exam.pk)),
-                ("patch", self.detail_url(self.exam.pk)),
-            ):
-                with self.subTest(student=student.email, method=method):
-                    response = getattr(self.client, method)(url, {}, format="json")
-                    self.assertEqual(response.status_code, 403)
+    def test_pending_student_is_403_everywhere(self):
+        self.login(self.pending_student)
+        for method, url in (
+            ("get", self.list_url()),
+            ("post", self.list_url()),
+            ("get", self.detail_url(self.exam.pk)),
+            ("patch", self.detail_url(self.exam.pk)),
+        ):
+            with self.subTest(method=method):
+                response = getattr(self.client, method)(url, {}, format="json")
+                self.assertEqual(response.status_code, 403)
+
+    def test_approved_student_cannot_write(self):
+        self.login(self.approved_student)
+        for method, url in (
+            ("post", self.list_url()),
+            ("patch", self.detail_url(self.exam.pk)),
+        ):
+            with self.subTest(method=method):
+                response = getattr(self.client, method)(url, {}, format="json")
+                self.assertEqual(response.status_code, 403)

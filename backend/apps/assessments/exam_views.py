@@ -1,4 +1,4 @@
-from django.db.models import Count, DecimalField, F, Sum
+from django.db.models import Count, DecimalField, F, IntegerField, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
@@ -6,13 +6,16 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsWorkspaceTeacher, WorkspaceSlugMixin
+from apps.accounts.models import User
+from apps.accounts.permissions import IsApprovedStudent, IsWorkspaceTeacher, WorkspaceSlugMixin
+from apps.enrollments.models import CourseEnrollment
 
 from .content_views import WorkspaceContextMixin
 from .exam_serializers import (
     ExamQuestionListInputSerializer,
     ExamQuestionListOutputSerializer,
     ExamSerializer,
+    StudentExamSerializer,
 )
 from .exam_services import (
     ExamConflictError,
@@ -22,7 +25,7 @@ from .exam_services import (
     replace_exam_questions,
     update_exam,
 )
-from .models import Exam, ExamQuestion
+from .models import Exam, ExamAttempt, ExamQuestion
 
 
 def exam_queryset(workspace):
@@ -42,20 +45,81 @@ def exam_queryset(workspace):
     )
 
 
+def student_exam_queryset(workspace, student):
+    """Published exams in courses where the student has an active enrollment."""
+    active_courses = CourseEnrollment.objects.filter(
+        workspace=workspace,
+        student=student,
+        status=CourseEnrollment.Status.ACTIVE,
+    ).values("course_id")
+    attempts_used = (
+        ExamAttempt.objects.filter(exam=OuterRef("pk"), student=student)
+        .order_by()
+        .values("exam")
+        .annotate(c=Count("pk"))
+        .values("c")
+    )
+    in_progress = (
+        ExamAttempt.objects.filter(
+            exam=OuterRef("pk"),
+            student=student,
+            status=ExamAttempt.Status.IN_PROGRESS,
+        )
+        .order_by("-attempt_number")
+        .values("pk")[:1]
+    )
+    return (
+        exam_queryset(workspace)
+        .filter(status=Exam.Status.PUBLISHED, course_id__in=active_courses)
+        .annotate(
+            attempts_used_annotated=Coalesce(
+                Subquery(attempts_used, output_field=IntegerField()), 0
+            ),
+            in_progress_attempt_id_annotated=Subquery(in_progress, output_field=IntegerField()),
+        )
+    )
+
+
 def _conflict(exc):
     return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
 
 
-class ExamListCreateView(WorkspaceSlugMixin, WorkspaceContextMixin, generics.ListCreateAPIView):
-    permission_classes = [IsWorkspaceTeacher]
-    serializer_class = ExamSerializer
+class ExamRoleMixin:
+    """Teacher gets the full exam; an approved student gets the limited card."""
+
+    def get_permissions(self):
+        if self.request.method in {"POST", "PATCH"}:
+            return [IsWorkspaceTeacher()]
+        user = self.request.user
+        if user.is_authenticated and user.role == User.Role.STUDENT:
+            return [IsApprovedStudent()]
+        return [IsWorkspaceTeacher()]
+
+    def is_student(self):
+        return self.request.user.role == User.Role.STUDENT
 
     def get_queryset(self):
+        if self.is_student():
+            return student_exam_queryset(self.workspace, self.request.user)
         return exam_queryset(self.workspace)
+
+    def get_serializer_class(self):
+        if self.request.method == "GET" and self.is_student():
+            return StudentExamSerializer
+        return ExamSerializer
+
+
+class ExamListCreateView(
+    WorkspaceSlugMixin, WorkspaceContextMixin, ExamRoleMixin, generics.ListCreateAPIView
+):
+    permission_classes = [IsWorkspaceTeacher]
 
     @extend_schema(
         summary="List exams",
-        description="Teacher only (student view comes in a later part).",
+        description=(
+            "Teacher: all exams. Approved student: only published exams in courses with an "
+            "active enrollment, without questions or passing_score."
+        ),
         responses=ExamSerializer(many=True),
     )
     def get(self, request, *args, **kwargs):
@@ -71,20 +135,22 @@ class ExamListCreateView(WorkspaceSlugMixin, WorkspaceContextMixin, generics.Lis
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         exam = create_exam(self.workspace, serializer.validated_data)
-        exam = self.get_queryset().get(pk=exam.pk)
+        exam = exam_queryset(self.workspace).get(pk=exam.pk)
         return Response(self.get_serializer(exam).data, status=status.HTTP_201_CREATED)
 
 
-class ExamDetailView(WorkspaceSlugMixin, WorkspaceContextMixin, generics.RetrieveUpdateAPIView):
+class ExamDetailView(
+    WorkspaceSlugMixin, WorkspaceContextMixin, ExamRoleMixin, generics.RetrieveUpdateAPIView
+):
     http_method_names = ["get", "patch", "head", "options"]
     lookup_url_kwarg = "exam_id"
     permission_classes = [IsWorkspaceTeacher]
-    serializer_class = ExamSerializer
 
-    def get_queryset(self):
-        return exam_queryset(self.workspace)
-
-    @extend_schema(summary="Retrieve an exam", responses=ExamSerializer)
+    @extend_schema(
+        summary="Retrieve an exam",
+        description="Students get the limited card, and 404 if the exam is not available to them.",
+        responses=ExamSerializer,
+    )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
@@ -102,7 +168,7 @@ class ExamDetailView(WorkspaceSlugMixin, WorkspaceContextMixin, generics.Retriev
             exam = update_exam(instance.pk, self.workspace, serializer.validated_data)
         except ExamConflictError as exc:
             return _conflict(exc)
-        exam = self.get_queryset().get(pk=exam.pk)
+        exam = exam_queryset(self.workspace).get(pk=exam.pk)
         return Response(self.get_serializer(exam).data)
 
 

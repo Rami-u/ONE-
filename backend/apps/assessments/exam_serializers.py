@@ -104,6 +104,37 @@ class ExamSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class StudentExamCourseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+
+
+class StudentExamSerializer(serializers.Serializer):
+    """Read-only exam card for students. Never exposes questions or passing_score."""
+
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+    description = serializers.CharField(allow_null=True)
+    course = serializers.SerializerMethodField()
+    duration_minutes = serializers.IntegerField(allow_null=True)
+    max_attempts = serializers.IntegerField()
+    proctoring_enabled = serializers.BooleanField()
+    question_count = serializers.IntegerField(source="question_count_annotated")
+    total_points = serializers.SerializerMethodField()
+    attempts_used = serializers.IntegerField(source="attempts_used_annotated")
+    in_progress_attempt_id = serializers.IntegerField(
+        source="in_progress_attempt_id_annotated", allow_null=True
+    )
+
+    @extend_schema_field(StudentExamCourseSerializer)
+    def get_course(self, obj):
+        return {"id": obj.course_id, "title": obj.course.title}
+
+    @extend_schema_field(OpenApiTypes.DECIMAL)
+    def get_total_points(self, obj):
+        return str((obj.total_points_annotated or Decimal("0")).quantize(Decimal("0.01")))
+
+
 class ExamQuestionItemSerializer(serializers.Serializer):
     question_id = serializers.IntegerField(min_value=1)
     points_override = serializers.DecimalField(
