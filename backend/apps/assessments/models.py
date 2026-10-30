@@ -346,6 +346,7 @@ class ExamAttempt(models.Model):
         validators=[MinValueValidator(Decimal("0.00"))],
     )
     passed = models.BooleanField(null=True, blank=True)
+    consent_given_at = models.DateTimeField(null=True, blank=True)
     proctoring_review_status = models.CharField(
         max_length=20,
         choices=ReviewStatus.choices,

@@ -12,6 +12,8 @@ from apps.accounts.permissions import (
     WorkspaceSlugMixin,
 )
 
+from apps.proctoring.services import record_consent
+
 from .attempt_serializers import (
     ExamAttemptStateSerializer,
     StartAttemptRequestSerializer,
@@ -85,6 +87,9 @@ class StartAttemptView(WorkspaceSlugMixin, APIView):
                 {"detail": "No attempts left for this exam."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        if exam.proctoring_enabled and body.validated_data["consent"]:
+            record_consent(attempt, timezone.now())
 
         return Response(
             attempt_state(attempt),
